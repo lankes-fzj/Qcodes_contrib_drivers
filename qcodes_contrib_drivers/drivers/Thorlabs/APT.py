@@ -2,10 +2,12 @@ import ctypes
 from typing import List, Optional, Tuple, Union
 import enum
 
+from .apt_error_codes import APT_ERROR_CODES
+
 __all__ = ["ThorlabsHWType", "ThorlabsException", "Thorlabs_APT"]
 
 
-class ThorlabsHWType(enum.Enum):
+class ThorlabsHWType(enum.IntEnum):
     PRM1Z8 = 31
     MFF10x = 48
     K10CR1 = 50
@@ -51,7 +53,6 @@ class Thorlabs_APT:
     _success_code = 0
 
     def __init__(self, dll_path: Optional[str] = None):
-
         # connect to the DLL
         self.dll = ctypes.CDLL(dll_path or self._dll_path)
 
@@ -61,6 +62,11 @@ class Thorlabs_APT:
         # Create sets to save initialized and closed devices
         self._hw_devices = set()
         self._closed_hw_devices = set()
+    
+    def __del__(self):
+        """Destruct object"""
+        # Clean-up if necessary
+        self.apt_clean_up()
 
     def error_check(self, code: int, function_name: str = "") -> None:
         """Analyzes a functions return code to check, if the function call to APT.dll was
@@ -74,11 +80,22 @@ class Thorlabs_APT:
             ThorlabsException: Thrown, if the return code indicates that an error has occurred.
         """
         if code == self._success_code:
-            logging.debug("APT: [{}]: {}".format(function_name, "OK - no error"))
+            logging.debug("{}: {}".format(function_name, "OK - no error"))
         else:
-            raise ThorlabsException("APT: [{}]: Unknown code: {}".format(function_name, code))
+            if code in APT_ERROR_CODES:
+                raise ThorlabsException("{}: {}".format(function_name, APT_ERROR_CODES[code]))
+            else:
+                raise ThorlabsException("{}: Unknown code: {}".format(function_name, code))
 
-    def check_device_initialized(self, func: callable) -> callable:
+    def check_server_initialized(func: callable) -> callable:
+        """Decorator that automatically initializes the APT server if not done yet."""
+        def wrapper(self, *args, **kwargs):
+            if not self._initialized:
+                self.apt_init()
+            return func(self, *args, **kwargs)
+        return wrapper
+
+    def check_device_initialized(func: callable) -> callable:
         """Decorator checking if the device is initialized before calling the function."""
         def wrapper(self, serial_number, *args, **kwargs):
             if serial_number not in self._hw_devices:
@@ -87,27 +104,30 @@ class Thorlabs_APT:
             return func(self, serial_number, *args, **kwargs)
         return wrapper
 
-    def apt_clean_up(self) -> None:
-        """Cleans up the resources of APT.dll"""
-        if self._initialized:
-            code = self.dll.APTCleanUp()
-            self.error_check(code, 'APTCleanUp')
-            # Mark as closed
-            self._initialized = False
-
-            # Remove open devices as well as closed devices since both cannot
-            #  be re-used anymore.
-            self._hw_devices.clear()
-            self._closed_hw_devices.clear()
-
     def apt_init(self) -> None:
         """Initialization of APT.dll"""
         if not self._initialized:
             code = self.dll.APTInit()
             self.error_check(code, 'APTInit')
+
             # Mark as initialized
             self._initialized = True
 
+    def apt_clean_up(self) -> None:
+        """Cleans up the resources of APT.dll"""
+        if self._initialized:
+            code = self.dll.APTCleanUp()
+            self.error_check(code, 'APTCleanUp')
+
+            # Mark as closed
+            self._initialized = False
+
+        # Remove open devices as well as closed devices since both cannot be
+        # re-used anymore.
+        self._hw_devices.clear()
+        self._closed_hw_devices.clear()
+
+    @check_server_initialized
     def list_available_devices(self, hw_type: Union[int, ThorlabsHWType] = None) \
             -> List[Tuple[int, int, int]]:
         """Lists all available Thorlabs devices, that can connect to the APT server.
@@ -146,6 +166,7 @@ class Thorlabs_APT:
 
         return devices
 
+    @check_server_initialized
     def enable_event_dlg(self, enable: bool) -> None:
         """Activates/deactivates the event dialog, which appears when an error occurs.
 
@@ -157,6 +178,7 @@ class Thorlabs_APT:
 
         self.error_check(code, 'EnableEventDlg')
 
+    @check_server_initialized
     def get_hw_info(self, serial_number: int) -> Tuple[str, str, str]:
         """Returns the device's information.
 
@@ -181,6 +203,7 @@ class Thorlabs_APT:
                c_sz_sw_ver.value.decode("utf-8"), \
                c_sz_hw_notes.value.decode("utf-8")
 
+    @check_server_initialized
     def get_hw_serial_num_ex(self, hw_type: Union[int, ThorlabsHWType], index: int) -> int:
         """Returns the a device's serial number by passing the model's hardware type and the
         device id.
@@ -206,6 +229,7 @@ class Thorlabs_APT:
 
         return c_serial_number.value
 
+    @check_server_initialized
     def init_hw_device(self, serial_number: int) -> None:
         """Initializes the device.
 
@@ -220,23 +244,13 @@ class Thorlabs_APT:
             self._closed_hw_devices.remove(serial_number)
             self._hw_devices.add(serial_number)
             return
+        
+        c_serial_number = ctypes.c_long(serial_number)
+        code = self.dll.InitHWDevice(c_serial_number)
+        self.error_check(code, 'InitHWDevice')
 
-        # Check if APT server is already initialized
-        if not self._initialized:
-            self.apt_init()
-
-        try:
-            c_serial_number = ctypes.c_long(serial_number)
-            code = self.dll.InitHWDevice(c_serial_number)
-            self.error_check(code, 'InitHWDevice')
-        except Exception:
-            # On error: Close device again, and perform clean-up if necessary
-            self.close_hw_device(serial_number)
-            # Re-raise exception
-            raise
-        else:
-            # If successful, mark device as initialized
-            self._hw_devices.add(serial_number)
+        # If successful, mark device as initialized
+        self._hw_devices.add(serial_number)
 
     def close_hw_device(self, serial_number: int) -> None:
         """Closes the device.
