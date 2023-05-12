@@ -132,7 +132,7 @@ class AttoDryLib:
         AttoDryLibError: When loading the library fails
     """
 
-    DLL_FILENAME = "attoDRYLib64bit.dll"
+    DLL_FILENAME = "AttoDryInterfaceLib64bit.dll"
 
     def __init__(self, device_type: AttoDryDevice, path_to_dll: str = None):
         self._begun = False  # Flag if `_begin()` has already been called
@@ -193,8 +193,8 @@ class AttoDryLib:
             device_type = device_type.value
         c_device_type = ctypes.c_uint16(int(device_type))
 
-        logger.debug("Calling attoDRY library function Begin")
-        exit_code = self._library.Begin(c_device_type)
+        logger.debug("Calling attoDRY library function AttoDRY_Interface_begin")
+        exit_code = self._library.AttoDRY_Interface_begin(c_device_type)
         AttoDryLibNonZeroExitCodeError.check(exit_code)
 
         self._begun = True  # Set begun flag
@@ -210,8 +210,8 @@ class AttoDryLib:
             # Skip if not begun or already ended
             return
         
-        logger.debug("Calling attoDRY library function End")
-        exit_code = self._library.End()
+        logger.debug("Calling attoDRY library function AttoDRY_Interface_end")
+        exit_code = self._library.AttoDRY_Interface_end()
         AttoDryLibNonZeroExitCodeError.check(exit_code)
 
         self._begun = False  # Reset begun flag
@@ -226,8 +226,8 @@ class AttoDryLib:
         com_port_bytes = com_port.encode(_PREFERRED_ENCODING)
         c_com_port = ctypes.create_string_buffer(com_port_bytes)
 
-        logger.debug("Calling attoDRY library function Connect")
-        exit_code = self._library.Connect(c_com_port)
+        logger.debug("Calling attoDRY library function AttoDRY_Interface_Connect")
+        exit_code = self._library.AttoDRY_Interface_Connect(c_com_port)
         AttoDryLibNonZeroExitCodeError.check(exit_code)
 
     @AttoDryLibNonZeroExitCodeError.check_function
@@ -236,8 +236,8 @@ class AttoDryLib:
         
         This function should be run before `end()`.
         """
-        logger.debug("Calling attoDRY library function Disconnect")
-        exit_code = self._library.Disconnect()
+        logger.debug("Calling attoDRY library function AttoDRY_Interface_Disconnect")
+        exit_code = self._library.AttoDRY_Interface_Disconnect()
         AttoDryLibNonZeroExitCodeError.check(exit_code)
 
     @AttoDryLibNonZeroExitCodeError.check_function
@@ -252,8 +252,9 @@ class AttoDryLib:
         """
         c_initialized = ctypes.c_int(0)
 
-        logger.debug("Calling attoDRY library function IsDeviceInitialised")
-        self._library.IsDeviceInitialised(ctypes.byref(c_initialized))
+        logger.debug("Calling attoDRY library function AttoDRY_Interface_isDeviceInitialised")
+        self._library.AttoDRY_Interface_isDeviceInitialised(
+            ctypes.byref(c_initialized))
         AttoDryLibNonZeroExitCodeError.check(exit_code)
         
         return bool(c_initialized.value)
@@ -267,8 +268,9 @@ class AttoDryLib:
         """
         c_connected = ctypes.c_int(0)
 
-        logger.debug("Calling attoDRY library function IsDeviceConnected")
-        exit_code = self._library.IsDeviceConnected(ctypes.byref(c_connected))
+        logger.debug("Calling attoDRY library function AttoDRY_Interface_isDeviceConnected")
+        exit_code = self._library.AttoDRY_Interface_isDeviceConnected(
+            ctypes.byref(c_connected))
         AttoDryLibNonZeroExitCodeError.check(exit_code)
         
         return bool(c_connected.value)
@@ -285,8 +287,8 @@ class AttoDryLib:
         """
         c_sample_temp = ctypes.c_float()
 
-        logger.debug("Calling attoDRY library function GetSampleTemperature")
-        exit_code = self._library.GetSampleTemperature(
+        logger.debug("Calling attoDRY library function AttoDRY_Interface_getSampleTemperature")
+        exit_code = self._library.AttoDRY_Interface_getSampleTemperature(
             ctypes.byref(c_sample_temp))
         AttoDryLibNonZeroExitCodeError.check(exit_code)
 
@@ -304,8 +306,9 @@ class AttoDryLib:
         """
         c_user_temp = ctypes.c_float()
 
-        logger.debug("Calling attoDRY library function GetUserTemperature")
-        exit_code = self._library.GetUserTemperature(ctypes.byref(c_user_temp))
+        logger.debug("Calling attoDRY library function AttoDRY_Interface_getUserTemperature")
+        exit_code = self._library.AttoDRY_Interface_getUserTemperature(
+            ctypes.byref(c_user_temp))
         AttoDryLibNonZeroExitCodeError.check(exit_code)
 
         return c_user_temp.value
@@ -321,8 +324,9 @@ class AttoDryLib:
         """
         c_user_temp = ctypes.c_float(float(user_temperature))
 
-        logger.debug("Calling attoDRY library function SetUserTemperature")
-        exit_code = self._library.SetUserTemperature(c_user_temp)
+        logger.debug("Calling attoDRY library function AttoDRY_Interface_setUserTemperature")
+        exit_code = self._library.AttoDRY_Interface_setUserTemperature(
+            c_user_temp)
         AttoDryLibNonZeroExitCodeError.check(exit_code)
 
     @AttoDryLibNonZeroExitCodeError.check_function
@@ -334,8 +338,9 @@ class AttoDryLib:
         """
         c_status = ctypes.c_int8()
 
-        logger.debug("Calling attoDRY library function GetAttodryErrorStatus")
-        exit_code = self._library.GetAttodryErrorStatus(ctypes.byref(c_status))
+        logger.debug("Calling attoDRY library function AttoDRY_Interface_getAttodryErrorStatus")
+        exit_code = self._library.AttoDRY_Interface_getAttodryErrorStatus(
+            ctypes.byref(c_status))
         AttoDryLibNonZeroExitCodeError.check(exit_code)
 
         return c_status.value
@@ -350,8 +355,8 @@ class AttoDryLib:
         c_length = ctypes.c_int32(_ATTODRY_MSG_MAXLEN)
         c_message = ctypes.create_string_buffer(_ATTODRY_MSG_MAXLEN)
 
-        logger.debug("Calling attoDRY library function GetAttodryErrorMessage")
-        exit_code = self._library.GetAttodryErrorMessage(
+        logger.debug("Calling attoDRY library function AttoDRY_Interface_getAttodryErrorMessage")
+        exit_code = self._library.AttoDRY_Interface_getAttodryErrorMessage(
             ctypes.byref(c_message), c_length)
         AttoDryLibNonZeroExitCodeError.check(exit_code)
 
@@ -370,8 +375,8 @@ class AttoDryLib:
         c_length = ctypes.c_int32(_ATTODRY_MSG_MAXLEN)
         c_message = ctypes.create_string_buffer(_ATTODRY_MSG_MAXLEN)
 
-        logger.debug("Calling attoDRY library function GetActionMessage")
-        exit_code = self._library.GetActionMessage(
+        logger.debug("Calling attoDRY library function AttoDRY_Interface_getActionMessage")
+        exit_code = self._library.AttoDRY_Interface_getActionMessage(
             ctypes.byref(c_message), c_length)
         AttoDryLibNonZeroExitCodeError.check(exit_code)
 
@@ -383,8 +388,8 @@ class AttoDryLib:
         
         Use this when you want to respond positively to a pop up.
         """
-        logger.debug("Calling attoDRY library function Confirm")
-        exit_code = self._library.Confirm()
+        logger.debug("Calling attoDRY library function AttoDRY_Interface_Confirm")
+        exit_code = self._library.AttoDRY_Interface_Confirm()
         AttoDryLibNonZeroExitCodeError.check(exit_code)
         
     @AttoDryLibNonZeroExitCodeError.check_function
@@ -394,6 +399,6 @@ class AttoDryLib:
         Use this when you want to cancel an action or respond negatively to a
         pop up.
         """
-        logger.debug("Calling attoDRY library function Cancel")
-        exit_code = self._library.Cancel()
+        logger.debug("Calling attoDRY library function AttoDRY_Interface_Cancel")
+        exit_code = self._library.AttoDRY_Interface_Cancel()
         AttoDryLibNonZeroExitCodeError.check(exit_code)
