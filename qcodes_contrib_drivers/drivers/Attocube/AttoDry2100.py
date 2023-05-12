@@ -100,6 +100,9 @@ class AttoDry2100(qc.Instrument):
         finally:
             self._library = None
         
+        # Also let Qcodes close its ressources
+        super().close()
+        
     def confirm(self) -> None:
         """Sends a 'Confirm' command to the attoDRY.
         
