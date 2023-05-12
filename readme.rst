@@ -1,3 +1,5 @@
+*This project was imported from* `GitHub:zea2/qcodes_contrib_drivers <https://github.com/zea2/Qcodes_contrib_drivers>`_.
+
 ######################
 QCoDeS contrib drivers
 ######################
