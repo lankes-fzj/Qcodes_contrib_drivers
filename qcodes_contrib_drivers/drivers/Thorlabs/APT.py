@@ -2,6 +2,8 @@ import ctypes
 from typing import List, Optional, Tuple, Union
 import enum
 
+__all__ = ["ThorlabsHWType", "ThorlabsException", "Thorlabs_APT"]
+
 
 class ThorlabsHWType(enum.Enum):
     PRM1Z8 = 31
@@ -13,6 +15,22 @@ class ThorlabsException(Exception):
     pass
 
 
+def singleton(cls):
+    """Decorator for singleton classes.
+
+    Classes decorated with this function can only be instantiated once.
+    """
+    instances = {}
+
+    def getinstance(*args, **kwargs):
+        if cls not in instances:
+            instances[cls] = cls(*args, **kwargs)
+        return instances[cls]
+    
+    return getinstance
+
+
+@singleton
 class Thorlabs_APT:
     """
     Wrapper class for the APT.dll Thorlabs APT Server library.
@@ -21,11 +39,8 @@ class Thorlabs_APT:
 
     Args:
         dll_path: Path to the APT.dll file. If not set, a default path is used.
-        verbose: Flag for the verbose behaviour. If true, successful events are printed.
-        event_dialog: Flag for the event dialog. If true, event dialog pops up for information.
 
     Attributes:
-        verbose: Flag for the verbose behaviour.
         dll: WinDLL object for APT.dll.
     """
 
@@ -35,17 +50,17 @@ class Thorlabs_APT:
     # success and error codes
     _success_code = 0
 
-    def __init__(self, dll_path: Optional[str] = None, verbose: bool = False, event_dialog: bool = False):
-
-        # save attributes
-        self.verbose = verbose
+    def __init__(self, dll_path: Optional[str] = None):
 
         # connect to the DLL
         self.dll = ctypes.CDLL(dll_path or self._dll_path)
 
-        # initialize APT server
-        self.apt_init()
-        self.enable_event_dlg(event_dialog)
+        # Mark APT server as uninitialized
+        self._initialized = False
+
+        # Create sets to save initialized and closed devices
+        self._hw_devices = set()
+        self._closed_hw_devices = set()
 
     def error_check(self, code: int, function_name: str = "") -> None:
         """Analyzes a functions return code to check, if the function call to APT.dll was
@@ -59,20 +74,39 @@ class Thorlabs_APT:
             ThorlabsException: Thrown, if the return code indicates that an error has occurred.
         """
         if code == self._success_code:
-            if self.verbose:
-                print("APT: [{}]: {}".format(function_name, "OK - no error"))
+            logging.debug("APT: [{}]: {}".format(function_name, "OK - no error"))
         else:
             raise ThorlabsException("APT: [{}]: Unknown code: {}".format(function_name, code))
 
+    def check_device_initialized(self, func: callable) -> callable:
+        """Decorator checking if the device is initialized before calling the function."""
+        def wrapper(self, serial_number, *args, **kwargs):
+            if serial_number not in self._hw_devices:
+                raise ThorlabsException("Device has not been initialized." +
+                    "'init_hw_device' must be called before using the device.")
+            return func(self, serial_number, *args, **kwargs)
+        return wrapper
+
     def apt_clean_up(self) -> None:
         """Cleans up the resources of APT.dll"""
-        code = self.dll.APTCleanUp()
-        self.error_check(code, 'APTCleanUp')
+        if self._initialized:
+            code = self.dll.APTCleanUp()
+            self.error_check(code, 'APTCleanUp')
+            # Mark as closed
+            self._initialized = False
+
+            # Remove open devices as well as closed devices since both cannot
+            #  be re-used anymore.
+            self._hw_devices.clear()
+            self._closed_hw_devices.clear()
 
     def apt_init(self) -> None:
         """Initialization of APT.dll"""
-        code = self.dll.APTInit()
-        self.error_check(code, 'APTInit')
+        if not self._initialized:
+            code = self.dll.APTInit()
+            self.error_check(code, 'APTInit')
+            # Mark as initialized
+            self._initialized = True
 
     def list_available_devices(self, hw_type: Union[int, ThorlabsHWType] = None) \
             -> List[Tuple[int, int, int]]:
@@ -173,15 +207,59 @@ class Thorlabs_APT:
         return c_serial_number.value
 
     def init_hw_device(self, serial_number: int) -> None:
-        """Initializes the device
+        """Initializes the device.
 
         Args:
             serial_number: The device's serial number for which this function is called.
         """
-        c_serial_number = ctypes.c_long(serial_number)
-        code = self.dll.InitHWDevice(c_serial_number)
-        self.error_check(code, 'InitHWDevice')
+        if serial_number in self._hw_devices:
+            # Device already initialized
+            return
+        elif serial_number in self._closed_hw_devices:
+            # Un-mark device as closed and mark as initialized
+            self._closed_hw_devices.remove(serial_number)
+            self._hw_devices.add(serial_number)
+            return
 
+        # Check if APT server is already initialized
+        if not self._initialized:
+            self.apt_init()
+
+        try:
+            c_serial_number = ctypes.c_long(serial_number)
+            code = self.dll.InitHWDevice(c_serial_number)
+            self.error_check(code, 'InitHWDevice')
+        except Exception:
+            # On error: Close device again, and perform clean-up if necessary
+            self.close_hw_device(serial_number)
+            # Re-raise exception
+            raise
+        else:
+            # If successful, mark device as initialized
+            self._hw_devices.add(serial_number)
+
+    def close_hw_device(self, serial_number: int) -> None:
+        """Closes the device.
+
+        The drivers actually don't allow to close hardware devices, but this
+        wrapper stores the initialized and closed devices, so that it is able
+        to automatically clean-up the whole APT server after the last
+        instrument was closed.
+
+        Args:
+            serial_number: Serial number of the device to close.
+        """
+        if serial_number in self._hw_devices:
+            # Device already initialized
+            self._hw_devices.remove(serial_number)
+            self._closed_hw_devices.add(serial_number)
+        
+        # If this is the last device that was closed, close the APT server too
+        if not self._hw_devices:
+            # Clean up APT server
+            self.apt_clean_up()
+
+    @check_device_initialized
     def mot_get_position(self, serial_number: int) -> float:
         """Returns the current motor position
 
@@ -197,6 +275,7 @@ class Thorlabs_APT:
         self.error_check(code, 'MOT_GetPosition')
         return c_position.value
 
+    @check_device_initialized
     def mot_get_status_bits(self, serial_number: int) -> int:
         """Returns the motor's status bits
 
@@ -212,8 +291,9 @@ class Thorlabs_APT:
         self.error_check(code, 'MOT_GetStatusBits')
         return c_status_bits.value
 
-    def mot_move_absolute_ex(self,
-                             serial_number: int, absolute_position: float, wait: bool) -> None:
+    @check_device_initialized
+    def mot_move_absolute_ex(self, serial_number: int,
+                             absolute_position: float, wait: bool) -> None:
         """Moves the motor to an absolute position
 
         Args:
@@ -229,6 +309,7 @@ class Thorlabs_APT:
         code = self.dll.MOT_MoveAbsoluteEx(c_serial_number, c_absolute_position, c_wait)
         self.error_check(code, 'MOT_MoveAbsoluteEx')
 
+    @check_device_initialized
     def mot_move_jog(self, serial_number: int, direction: int, wait: bool) -> None:
         """Returns the motor's status bits
 
@@ -245,6 +326,7 @@ class Thorlabs_APT:
         code = self.dll.MOT_MoveJog(c_serial_number, c_direction, c_wait)
         self.error_check(code, 'MOT_MoveJog')
 
+    @check_device_initialized
     def mot_stop_profiled(self, serial_number: int) -> None:
         """Stops the motor.
 
@@ -256,6 +338,7 @@ class Thorlabs_APT:
         code = self.dll.MOT_StopProfiled(c_serial_number)
         self.error_check(code, 'MOT_StopProfiled')
 
+    @check_device_initialized
     def mot_get_velocity_parameters(self, serial_number: int) -> Tuple[float, float, float]:
         """Returns the motor's velocity parameters
 
@@ -278,6 +361,7 @@ class Thorlabs_APT:
 
         return c_min_vel.value, c_accn.value, c_max_vel.value
 
+    @check_device_initialized
     def mot_set_velocity_parameters(self, serial_number: int, min_vel: float, accn: float,
                                     max_vel: float) -> None:
         """Sets the motor's velocity parameters
@@ -296,6 +380,7 @@ class Thorlabs_APT:
         code = self.dll.MOT_SetVelParams(c_serial_number, c_min_vel, c_accn, c_max_vel)
         self.error_check(code, 'MOT_SetVelParams')
 
+    @check_device_initialized
     def mot_move_velocity(self, serial_number: int, direction: int) -> None:
         """Lets the motor rotate continuously in the specified direction.
 
@@ -309,6 +394,7 @@ class Thorlabs_APT:
         code = self.dll.MOT_MoveVelocity(c_serial_number, c_direction)
         self.error_check(code, 'MOT_MoveVelocity')
 
+    @check_device_initialized
     def enable_hw_channel(self, serial_number: int) -> None:
         """Enables the hardware channel (often the motor)
 
@@ -320,6 +406,7 @@ class Thorlabs_APT:
         code = self.dll.MOT_EnableHWChannel(c_serial_number)
         self.error_check(code, 'MOT_EnableHWChannel')
 
+    @check_device_initialized
     def disable_hw_channel(self, serial_number: int) -> None:
         """Disables the hardware channel (often the motor)
 
@@ -331,6 +418,7 @@ class Thorlabs_APT:
         code = self.dll.MOT_DisableHWChannel(c_serial_number)
         self.error_check(code, 'MOT_DisableHWChannel')
 
+    @check_device_initialized
     def mot_move_home(self, serial_number: int, wait: bool) -> None:
         """Moves the motor to zero and recalibrates it
 
@@ -345,6 +433,7 @@ class Thorlabs_APT:
         code = self.dll.MOT_MoveHome(c_serial_number, c_wait)
         self.error_check(code, 'MOT_MoveHome')
 
+    @check_device_initialized
     def mot_get_home_parameters(self, serial_number: int) -> Tuple[int, int, float, float]:
         """Returns the motor's parameters for moving home
 
@@ -367,6 +456,7 @@ class Thorlabs_APT:
 
         return c_direction.value, c_lim_switch.value, c_velocity.value, c_zero_offset.value
 
+    @check_device_initialized
     def mot_set_home_parameters(self, serial_number: int, direction: int, lim_switch: int,
                                 velocity: float, zero_offset: float) -> None:
         """Sets the motor's parameters for moving home
