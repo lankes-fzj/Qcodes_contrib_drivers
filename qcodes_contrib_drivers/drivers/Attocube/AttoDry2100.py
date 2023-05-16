@@ -33,9 +33,10 @@ class AttoDry2100(qc.Instrument):
             # Validate if device is initialized
             if not self._library.is_initialized():
                 raise AttoDryLibError("AttoDRY device is not initialized!")
-        finally:
+        except Exception:
             # Close instrument if something fails after library was created
             self.close()
+            raise
 
         # Configure QCodes parameters
         self.add_parameter("user_temperature",

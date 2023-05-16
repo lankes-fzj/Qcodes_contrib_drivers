@@ -33,7 +33,7 @@ class Thorlabs_MFF10x(Instrument):
         # Store serial number
         if serial_number is None:
             # Use device id to obtain serial number
-            self.serial_number = self.apt.get_hw_serial_num_ex(ThorlabsHWType.K10CR1, device_id)
+            self.serial_number = self.apt.get_hw_serial_num_ex(ThorlabsHWType.MFF10x, device_id)
         else:
             # Use serial number from arguments
             self.serial_number = serial_number

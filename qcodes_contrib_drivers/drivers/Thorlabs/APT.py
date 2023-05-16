@@ -1,6 +1,7 @@
 import ctypes
 from typing import List, Optional, Tuple, Union
 import enum
+import logging
 
 from .apt_error_codes import APT_ERROR_CODES
 
@@ -92,6 +93,7 @@ class Thorlabs_APT:
         def wrapper(self, *args, **kwargs):
             if not self._initialized:
                 self.apt_init()
+                self.enable_event_dlg(False)  # Disable event dialog by default
             return func(self, *args, **kwargs)
         return wrapper
 

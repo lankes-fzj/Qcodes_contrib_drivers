@@ -253,7 +253,7 @@ class AttoDryLib:
         c_initialized = ctypes.c_int(0)
 
         logger.debug("Calling attoDRY library function AttoDRY_Interface_isDeviceInitialised")
-        self._library.AttoDRY_Interface_isDeviceInitialised(
+        exit_code = self._library.AttoDRY_Interface_isDeviceInitialised(
             ctypes.byref(c_initialized))
         AttoDryLibNonZeroExitCodeError.check(exit_code)
         
