@@ -67,6 +67,11 @@ class AttoDry2100(qc.Instrument):
                            set_cmd=False,
                            vals=qc.utils.validators.Strings(),
                            docstring="Current action message")
+        self.add_parameter("temperature_control",
+                           get_cmd=self._library.is_controlling_temperature,
+                           set_cmd=False,
+                           vals=qc.utils.validators.Bool(),
+                           docstring="Checks if temperature control is active")
 
         self.add_parameter("_is_connected",
                            get_cmd=self._library.is_connected,
@@ -118,3 +123,18 @@ class AttoDry2100(qc.Instrument):
         pop up.
         """
         self._library.cancel()
+
+    def toggle_full_temperature_control(self) -> None:
+        """Toggles temperature control, just as the thermometer icon on the
+        touch screen.
+        """
+        self._library.toggle_full_temperature_control()
+    
+    def toggle_sample_temperature_control(self) -> None:
+        """Toggles the sample temperature controller.
+        
+        This command only toggles the sample temperature controller. It does
+        not pump the volumes etc. Use `toggle_full_temperature_control` for
+        behaviour like the temperature control icon on the touch screen.
+        """
+        self._library.toggle_sample_temperature_control()

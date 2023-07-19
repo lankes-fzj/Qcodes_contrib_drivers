@@ -110,7 +110,7 @@ class AttoDryLibNonZeroExitCodeError(AttoDryLibError):
             except Exception as exc:
                 # Unexpected exception type
                 raise AttoDryLibError(f"Function {func.__name__} failed " +
-                                      f"unexpectly.") from exc
+                                      f"unexpectedly.") from exc
         
         # Returned decorated function
         return wrapper
@@ -402,3 +402,43 @@ class AttoDryLib:
         logger.debug("Calling attoDRY library function AttoDRY_Interface_Cancel")
         exit_code = self._library.AttoDRY_Interface_Cancel()
         AttoDryLibNonZeroExitCodeError.check(exit_code)
+
+    @AttoDryLibNonZeroExitCodeError.check_function
+    def toggle_full_temperature_control(self) -> None:
+        """Toggles temperature control, just as the thermometer icon on the
+        touch screen.
+        """
+        logger.debug("Calling attoDRY library function AttoDRY_Interface_toggleFullTemperatureControl")
+        exit_code = self._library.AttoDRY_Interface_toggleFullTemperatureControl()
+        AttoDryLibNonZeroExitCodeError.check(exit_code)
+
+    @AttoDryLibNonZeroExitCodeError.check_function
+    def toggle_sample_temperature_control(self) -> None:
+        """Toggles the sample temperature controller.
+        
+        This command only toggles the sample temperature controller. It does
+        not pump the volumes etc. Use `toggle_full_temperature_control` for
+        behaviour like the temperature control icon on the touch screen.
+        """
+        logger.debug("Calling attoDRY library function AttoDRY_Interface_toggleSampleTemperatureControl")
+        exit_code = self._library.AttoDRY_Interface_toggleSampleTemperatureControl()
+        AttoDryLibNonZeroExitCodeError.check(exit_code)
+
+    @AttoDryLibNonZeroExitCodeError.check_function
+    def is_controlling_temperature(self) -> bool:
+        """Checks if temperature control is active.
+        
+        This is true when the temperature control icon on the touch screen is
+        orange, and false when the icon is white.
+ 
+        Returns:
+            bool: True, if temperature control is active.
+        """
+        c_controlling = ctypes.c_int(0)
+
+        logger.debug("Calling attoDRY library function AttoDRY_Interface_isControllingTemperature")
+        exit_code = self._library.AttoDRY_Interface_isControllingTemperature(
+            ctypes.byref(c_controlling))
+        AttoDryLibNonZeroExitCodeError.check(exit_code)
+        
+        return bool(c_controlling.value)
