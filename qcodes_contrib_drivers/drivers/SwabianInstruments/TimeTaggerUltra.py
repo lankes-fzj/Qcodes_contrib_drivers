@@ -13,7 +13,11 @@ import matplotlib.pyplot as plt
 import qcodes as qc
 import qcodes.utils.validators as vals
 
-from .library import TimeTagger as tt
+try:
+    import TimeTagger as tt
+except ModuleNotFoundError as exc:
+    raise ModuleNotFoundError("Please install the TimeTagger library to use the TimeTaggerUltra " +
+                              "Qcodes-instrument!") from exc
 
 
 class TTUChannel(qc.InstrumentChannel):
@@ -128,7 +132,7 @@ class TTUltra(qc.Instrument):
             number_of_events = filewriter.getTotalEvents()
             file_size = filewriter.getTotalSize()
             print(f"{number_of_events} were written to file. Storing required " +
-                  f"{file_size/number_of_events:03d} bytes/tag.")
+                  f"{file_size/number_of_events:.3f} bytes/tag.")
         finally:
             # Cleanup
             if filewriter is not None:
