@@ -1,7 +1,9 @@
 import enum
 
-__all__ = ["PicoquantSepia2LibError", "handle_errors", "PicoquantSepia2SupportRequestOptions",
-           "PicoquantSepia2Preset", "PicoquantSepia2SPMStates", "PicoquantSepia2SWSStates"]
+__all__ = ["PicoquantSepia2LibError", "handle_errors", "PicoquantSepia2WorkingMode",
+           "PicoquantSepia2SupportRequestOptions", "PicoquantSepia2Preset",
+           "PicoquantSepia2SOMDState", "PicoquantSepia2SPMStates",
+           "PicoquantSepia2SWSStates"]
 
 
 class PicoquantSepia2LibError(Exception):
@@ -37,6 +39,11 @@ def handle_errors(func):
     return wrapper
 
 
+class PicoquantSepia2WorkingMode(enum.IntEnum):
+    STAY_PERMANENT = 0  # Default mode: Commands & full protective data are written immediately
+    VOLATILE = 1  # Volatile mode: Commands sent immediately, protective data retarded
+
+
 class PicoquantSepia2SupportRequestOptions(enum.IntFlag):
     NO_PREAMBLE = 0x1  # No preamble text processing (if given, it is ignored)
     NO_TITLE = 0x2  # No title created
@@ -49,6 +56,16 @@ class PicoquantSepia2Preset(enum.IntEnum):
     CURRENT_SETTINGS = 0
     PRESET_1 = 1
     PRESET_2 = 2
+
+
+class PicoquantSepia2SOMDState(enum.IntFlag):
+    READY = 0x00  # Module ready
+    INIT = 0x01  # Module initialising
+    BUSY = 0x02  # Busy until (re-)locking PLL or update data processed
+    HARDWARE_ERROR = 0x10  # Error code pending
+    FW_UPDATE_RUNNING = 0x20  # Firmware update running
+    FRAM_WRITE_PROTECTED = 0x40  # FRAM write protected: set, write enabled: cleared
+    PLL_UNSTABLE = 0x80  # PLL not stable after changing base osc. or trigger mode
 
 
 class PicoquantSepia2SPMStates(enum.IntFlag):
