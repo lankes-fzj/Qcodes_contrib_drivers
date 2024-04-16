@@ -4,41 +4,9 @@ import enum
 import os
 import typing
 
-
-class PicoquantSepia2LibError(Exception):
-    def __init__(self, error_code: int = None, error_message: str = None,
-                 function_name: str = None):
-        self.error_code = error_code
-        self.error_message = error_message
-        self.function_name = function_name
-
-        # Create exception message based on available information
-        if self.function_name:
-            msg = f"Library function '{self.function_name}' "
-        else:
-            msg = "A library function "
-        if self.error_code:
-            msg += f"failed with {self.error_code}"
-        else:
-            msg += "failed unexpectedly"
-        if self.error_message:
-            msg += f": {self.error_message}"
-
-        super().__init__(msg)
-
-
-class PicoquantSepia2SupportRequestOptions(enum.IntFlag):
-    NO_PREAMBLE = 1  # No preamble text processing (if given, it is ignored)
-    NO_TITLE = 2  # No title created
-    NO_CALLING_SOFTWARE_INDENT = 4  # Lines on calling software are not indented
-    NO_SYSTEM_INFO = 8  # No system info is processed
-
-
-class PicoquantSepia2Preset(enum.IntEnum):
-    FACTORY_DEFAULTS = -1
-    CURRENT_SETTINGS = 0
-    PRESET_1 = 1
-    PRESET_2 = 2
+from .Sepia_Library_utils import PicoquantSepia2LibError, handle_errors, \
+    PicoquantSepia2SupportRequestOptions, PicoquantSepia2Preset, \
+        PicoquantSepia2SPMStates, PicoquantSepia2SWSStates
 
 
 class PicoquantSepia2Lib:
@@ -479,8 +447,8 @@ class PicoquantSepia2Lib:
     def slm_get_parameters(self, device_id: int, slot_id: int) -> (int, bool, int, float):
         c_freq = ctypes.c_int()
         c_pulse_mode = ctypes.c_ubyte()
-        c_head_type = ctype.c_int()
-        c_intensity = ctype.c_ubyte()
+        c_head_type = ctypes.c_int()
+        c_intensity = ctypes.c_ubyte()
 
         error_code = self.dll.SEPIA2_SLM_GetParameters(ctypes.c_int(device_id),
                                                        ctypes.c_int(slot_id),
@@ -665,7 +633,8 @@ class PicoquantSepia2Lib:
         self.check_error(error_code, "SEPIA2_SOM_SetBurstValues")
 
     @handle_errors
-    def som_get_burst_length_array(self, device_id: int, slot_id: int) -> typing.List[int]:
+    def som_get_burst_length_array(self, device_id: int, slot_id: int) \
+            -> (int, int, int, int, int, int, int, int):
         c_burst_lengths = [ctypes.c_long() for i in range(8)]
 
         error_code = self.dll.SEPIA2_SOM_GetBurstLengthArray(ctypes.c_int(device_id),
@@ -674,7 +643,7 @@ class PicoquantSepia2Lib:
                                                                for bl in c_burst_lengths])
         self.check_error(error_code, "SEPIA2_SOM_GetBurstLengthArray")
 
-        return [bl.value for bl in c_burst_lengths]
+        return tuple(bl.value for bl in c_burst_lengths)
 
     @handle_errors
     def som_set_burst_length_array(self, device_id: int, slot_id: int,
@@ -708,9 +677,9 @@ class PicoquantSepia2Lib:
                               sync_inverse: bool) -> None:
         error_code = self.dll.SEPIA2_SOM_SetOutNSyncEnable(ctypes.c_int(device_id),
                                                            ctypes.c_int(slot_id),
-                                                           ctypes.c_ubyte(c_out_enable),
-                                                           ctypes.c_ubyte(c_sync_enable),
-                                                           ctypes.c_ubyte(c_sync_inverse))
+                                                           ctypes.c_ubyte(out_enable),
+                                                           ctypes.c_ubyte(sync_enable),
+                                                           ctypes.c_ubyte(sync_inverse))
         self.check_error(error_code, "SEPIA2_SOM_SetOutNSyncEnable")
 
     @handle_errors
@@ -764,7 +733,7 @@ class PicoquantSepia2Lib:
 
         error_code = self.dll.SEPIA2_SOM_GetFreqTrigMode(ctypes.c_int(device_id),
                                                          ctypes.c_int(slot_id),
-                                                         ctypes.byref(c_freq_trig_mode)
+                                                         ctypes.byref(c_freq_trig_mode),
                                                          ctypes.byref(c_synchronize))
         self.check_error(error_code, "SEPIA2_SOMD_GetFreqTrigMode")
 
@@ -832,11 +801,12 @@ class PicoquantSepia2Lib:
                                                          ctypes.c_int(slot_id),
                                                          ctypes.c_ushort(divider),
                                                          ctypes.c_ubyte(pre_sync),
-                                                         ctypes.c_ubyte(mask_sync))
+                                                         ctypes.c_ubyte(sync_mask))
         self.check_error(error_code, "SEPIA2_SOMD_SetBurstValues")
 
     @handle_errors
-    def somd_get_burst_length_array(self, device_id: int, slot_id: int) -> typing.List[int]:
+    def somd_get_burst_length_array(self, device_id: int, slot_id: int) \
+            -> (int, int, int, int, int, int, int, int):
         c_burst_lengths = [ctypes.c_long() for i in range(8)]
 
         error_code = self.dll.SEPIA2_SOMD_GetBurstLengthArray(ctypes.c_int(device_id),
@@ -845,7 +815,7 @@ class PicoquantSepia2Lib:
                                                                 for bl in c_burst_lengths])
         self.check_error(error_code, "SEPIA2_SOMD_GetBurstLengthArray")
 
-        return [bl.value for bl in c_burst_lengths]
+        return tuple(bl.value for bl in c_burst_lengths)
 
     @handle_errors
     def somd_set_burst_length_array(self, device_id: int, slot_id: int,
@@ -875,13 +845,13 @@ class PicoquantSepia2Lib:
         return c_out_enable.value, c_sync_enable.value, bool(c_sync_inverse.value)
 
     @handle_errors
-    def somd_set_out_n_sync_enable(self, device_id: int, slot_id: int, out_enable: int, sync_enable: int,
-                              sync_inverse: bool) -> None:
+    def somd_set_out_n_sync_enable(self, device_id: int, slot_id: int, out_enable: int,
+                                   sync_enable: int, sync_inverse: bool) -> None:
         error_code = self.dll.SEPIA2_SOMD_SetOutNSyncEnable(ctypes.c_int(device_id),
                                                             ctypes.c_int(slot_id),
-                                                            ctypes.c_ubyte(c_out_enable),
-                                                            ctypes.c_ubyte(c_sync_enable),
-                                                            ctypes.c_ubyte(c_sync_inverse))
+                                                            ctypes.c_ubyte(out_enable),
+                                                            ctypes.c_ubyte(sync_enable),
+                                                            ctypes.c_ubyte(sync_inverse))
         self.check_error(error_code, "SEPIA2_SOMD_SetOutNSyncEnable")
 
     @handle_errors
@@ -947,11 +917,11 @@ class PicoquantSepia2Lib:
         error_code = self.dll.SEPIA2_SOMD_SetSeqOutputInfos(ctypes.c_int(device_id),
                                                             ctypes.c_int(slot_id),
                                                             ctypes.c_ubyte(seq_output_id),
-                                                            ctypes.c_ubyte(c_delayed),
-                                                            ctypes.c_ubyte(c_out_combi),
-                                                            ctypes.c_ubyte(c_masked_combi),
-                                                            ctypes.c_double(c_coarse_delay),
-                                                            ctypes.c_ubyte(c_fine_delay))
+                                                            ctypes.c_ubyte(delayed),
+                                                            ctypes.c_ubyte(out_combi),
+                                                            ctypes.c_ubyte(masked_combi),
+                                                            ctypes.c_double(coarse_delay),
+                                                            ctypes.c_ubyte(fine_delay))
         self.check_error(error_code, "SEPIA2_SOMD_SetSeqOutputInfos")
 
     @handle_errors
@@ -1001,7 +971,7 @@ class PicoquantSepia2Lib:
         c_coarse_delay_step = ctypes.c_double()
         c_fine_delay_steps = ctypes.c_byte()
 
-        error_code = self.dll.SEPIA2_SOMD_GetDelayUnits(ctypes.c_int(devide_id),
+        error_code = self.dll.SEPIA2_SOMD_GetDelayUnits(ctypes.c_int(device_id),
                                                         ctypes.c_int(slot_id),
                                                         ctypes.byref(c_coarse_delay_step),
                                                         ctypes.byref(c_fine_delay_steps))
@@ -1013,7 +983,7 @@ class PicoquantSepia2Lib:
     def somd_get_fw_version(self, device_id: int, slot_id: int) -> (int, int, int):
         c_fw_version = ctypes.c_ulong()
 
-        error_code = self.dll.SEPIA2_SOMD_GetFWVersion(ctypes.c_int(devide_id),
+        error_code = self.dll.SEPIA2_SOMD_GetFWVersion(ctypes.c_int(device_id),
                                                        ctypes.c_int(slot_id),
                                                        ctypes.byref(c_fw_version))
         self.check_error(error_code, "SEPIA2_SOMD_GetFWVersion")
@@ -1023,37 +993,603 @@ class PicoquantSepia2Lib:
         # major, minor, build
         return fw_version_bytes[0], fw_version_bytes[1], int.from_bytes(fw_version_bytes[2:])
 
-    # @handle_errors
-    # def somd_fw_read_page(self, device_id: int, slot_id: int):
-    #     error_code = self.dll.SEPIA2_SOMD_FWReadPage(...)
-    #     self.check_error(error_code, "SEPIA2_SOMD_FWReadPage")
-    #     return ...
+    @handle_errors
+    def somd_get_hw_params(self, device_id: int, slot_id: int) \
+            -> ((int, int, int), (int, int, int, int), int):
+        c_temperatures = [ctypes.c_ushort() for i in range(3)]
+        c_voltages = [ctypes.c_ushort() for i in range(4)]
+        c_aux = ctypes.c_ushort()
+        
+        error_code = self.dll.SEPIA2_SOMD_GetHWParams(ctypes.c_int(device_id),
+                                                      ctypes.c_int(slot_id),
+                                                      *[ctypes.byref(t) for t in c_temperatures],
+                                                      *[ctypes.byref(v) for v in c_voltages],
+                                                      ctypes.byref(c_aux))
+        self.check_error(error_code, "SEPIA2_SOMD_GetHWParams")
 
-    # @handle_errors
-    # def somd_fw_write_page(self, device_id: int, slot_id: int):
-    #     error_code = self.dll.SEPIA2_SOMD_FWWritePage(...)
-    #     self.check_error(error_code, "SEPIA2_SOMD_FWWritePage")
-    #     return ...
+        return tuple(t.value for t in c_temperatures), tuple(v.value for v in c_voltages), \
+            c_aux.value
 
-    # @handle_errors
-    # def somd_calibrate(self, device_id: int, slot_id: int):
-    #     error_code = self.dll.SEPIA2_SOMD_Calibrate(...)
-    #     self.check_error(error_code, "SEPIA2_SOMD_Calibrate")
-    #     return ...
+    # Missing functions (since not documented):
+    #  SEPIA2_SOMD_FWReadPage
+    #  SEPIA2_SOMD_FWWritePage
+    #  SEPIA2_SOMD_Calibrate
 
-    # @handle_errors
-    # def somd_get_hw_params(self, device_id: int, slot_id: int, ...):
-    #     error_code = self.dll.SEPIA2_SOMD_GetHWParams(...)
-    #     self.check_error(error_code, "SEPIA2_SOMD_GetHWParams")
-    #     return ...
+    @handle_errors
+    def swm_decode_range_idx(self, device_id: int, slot_id: int, time_base_id: int) -> int:
+        c_upper_limit = ctypes.c_int()
 
+        error_code = self.dll.SEPIA2_SWM_DecodeRangeIdx(ctypes.c_int(device_id),
+                                                        ctypes.c_int(slot_id),
+                                                        ctypes.c_int(time_base_id),
+                                                        ctypes.byref(c_upper_limit))
+        self.check_error(error_code, "SEPIA2_SWM_DecodeRangeIdx")
 
-def handle_errors(func):
-    def wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except PicoquantSepia2LibError:
-            raise  # We don't want to modify PicoquantSepia2LibError
-        except Exception as exc:
-            raise PicoquantSepia2LibError() from exc
-    return wrapper
+        return c_upper_limit.value
+
+    @handle_errors
+    def swm_get_ui_constants(self, device_id: int, slot_id: int) \
+            -> (int, int, int, int, int, int, int):
+        c_time_bases_count = ctypes.c_ubyte()
+        c_max_amplitude = ctypes.c_ushort()
+        c_max_slew_rate = ctypes.c_ushort()
+        c_exp_ramp_factor = ctypes.c_ushort()
+        c_min_user_val = ctypes.c_ushort()
+        c_max_user_val = ctypes.c_ushort()
+        c_user_resolution = ctypes.c_ushort()
+        
+        error_code = self.dll.SEPIA2_SWM_GetUIConstants(ctypes.c_int(device_id),
+                                                        ctypes.c_int(slot_id),
+                                                        ctypes.byref(c_time_bases_count),
+                                                        ctypes.byref(c_max_amplitude),
+                                                        ctypes.byref(c_max_slew_rate),
+                                                        ctypes.byref(c_exp_ramp_factor),
+                                                        ctypes.byref(c_min_user_val),
+                                                        ctypes.byref(c_max_user_val),
+                                                        ctypes.byref(c_user_resolution))
+        self.check_error(error_code, "SEPIA2_SWM_GetUIConstants")
+
+        return c_time_bases_count.value, c_max_amplitude.value, c_max_slew_rate.value, \
+            c_exp_ramp_factor.value, c_min_user_val.value, c_max_user_val.value, \
+            c_user_resolution.value
+
+    @handle_errors
+    def swm_get_curve_params(self, device_id: int, slot_id: int, curve_id: int) \
+            -> (int, int, int, int, int, int):
+        c_time_base_id = ctypes.c_ubyte()
+        c_pulse_amplitude = ctypes.c_ushort()
+        c_ramp_slew_rate = ctypes.c_ushort()
+        c_pulse_start_delay = ctypes.c_ushort()
+        c_ramp_start_delay = ctypes.c_ushort()
+        c_wave_stop_delay = ctypes.c_ushort()
+
+        error_code = self.dll.SEPIA2_SWM_GetCurveParams(ctypes.c_int(device_id),
+                                                        ctypes.c_int(slot_id),
+                                                        ctypes.byref(c_time_base_id),
+                                                        ctypes.byref(c_pulse_amplitude),
+                                                        ctypes.byref(c_ramp_slew_rate),
+                                                        ctypes.byref(c_pulse_start_delay),
+                                                        ctypes.byref(c_ramp_start_delay),
+                                                        ctypes.byref(c_wave_stop_delay))
+        self.check_error(error_code, "SEPIA2_SWM_GetCurveParams")
+
+        return c_time_base_id.value, c_pulse_amplitude.value, c_ramp_slew_rate.value, \
+            c_pulse_start_delay.value, c_ramp_start_delay.value, c_wave_stop_delay.value
+
+    @handle_errors
+    def swm_set_curve_params(self, device_id: int, slot_id: int, time_base_id: int,
+                             pulse_amplitude: int, ramp_slew_rate: int, pulse_start_delay: int,
+                             ramp_start_delay: int, wave_stop_delay: int) -> None:
+        error_code = self.dll.SEPIA2_SWM_SetCurveParams(ctypes.c_int(device_id),
+                                                        ctypes.c_int(slot_id),
+                                                        ctypes.c_ubyte(time_base_id),
+                                                        ctypes.c_ushort(pulse_amplitude),
+                                                        ctypes.c_ushort(ramp_slew_rate),
+                                                        ctypes.c_ushort(pulse_start_delay),
+                                                        ctypes.c_ushort(ramp_start_delay),
+                                                        ctypes.c_ushort(wave_stop_delay))
+        self.check_error(error_code, "SEPIA2_SWM_SetCurveParams")
+
+    @handle_errors
+    def swm_get_cal_table_val(self, device_id: int, slot_id: int, table_name: str, table_row: int,
+                              table_column: int) -> int:
+        c_table_name = ctypes.create_string_buffer(table_name)
+        c_value = ctypes.c_ushort()
+
+        error_code = self.dll.SEPIA2_SWM_GetCalTableVal(ctypes.c_int(device_id),
+                                                        ctypes.c_int(slot_id),
+                                                        c_table_name, ctypes.c_ubyte(table_row),
+                                                        ctypes.c_ubyte(table_column),
+                                                        ctypes.byref(c_value))
+        self.check_error(error_code, "SEPIA2_SWM_GetCalTableVal")
+
+        return c_value.value
+
+    @handle_errors
+    def swm_get_ext_attenuation(self, device_id: int, slot_id: int) -> float:
+        c_ext_attenuation = ctypes.c_float()
+
+        error_code = self.dll.SEPIA2_SWM_GetExtAtten(ctypes.c_int(device_id), ctypes.c_int(slot_id),
+                                                     ctypes.byref(c_ext_attenuation))
+        self.check_error(error_code, "SEPIA2_SWM_GetExtAtten")
+
+        return c_ext_attenuation.value
+
+    @handle_errors
+    def swm_set_ext_attenuation(self, device_id: int, slot_id: int, ext_attenuation: float) -> None:
+        error_code = self.dll.SEPIA2_SWM_SetExtAtten(ctypes.c_int(device_id), ctypes.c_int(slot_id),
+                                                     ctypes.c_float(ext_attenuation))
+        self.check_error(error_code, "SEPIA2_SWM_SetExtAtten")
+
+    @handle_errors
+    def vcl_get_ui_constants(self, device_id: int, slot_id: int) -> (int, int, int):
+        c_min_temp = ctypes.c_int()
+        c_max_temp = ctypes.c_int()
+        c_temp_resolution = ctypes.c_int()
+
+        error_code = self.dll.SEPIA2_VCL_GetUIConstants(ctypes.c_int(device_id),
+                                                        ctypes.c_int(slot_id),
+                                                        ctypes.byref(c_min_temp),
+                                                        ctypes.byref(c_max_temp),
+                                                        ctypes.byref(c_temp_resolution))
+        self.check_error(error_code, "SEPIA2_VCL_GetUIConstants")
+
+        return c_min_temp.value, c_max_temp.value, c_temp_resolution.value
+
+    @handle_errors
+    def vcl_get_temperature(self, device_id: int, slot_id: int) -> int:
+        c_temperature = ctypes.c_int()
+
+        error_code = self.dll.SEPIA2_VCL_GetTemperature(ctypes.c_int(device_id),
+                                                        ctypes.c_int(slot_id),
+                                                        ctypes.byref(c_temperature))
+        self.check_error(error_code, "SEPIA2_VCL_GetTemperature")
+
+        return c_temperature.value
+
+    @handle_errors
+    def vcl_set_temperature(self, device_id: int, slot_id: int, temperature: int) -> None:
+        error_code = self.dll.SEPIA2_VCL_SetTemperature(ctypes.c_int(device_id),
+                                                        ctypes.c_int(slot_id),
+                                                        ctypes.c_int(temperature))
+        self.check_error(error_code, "SEPIA2_VCL_SetTemperature")
+
+    @handle_errors
+    def vcl_get_bias_voltage(self, device_id: int, slot_id: int) -> int:
+        c_bias_voltage = ctypes.c_int()
+
+        error_code = self.dll.SEPIA2_VCL_GetBiasVoltage(ctypes.c_int(device_id),
+                                                        ctypes.c_int(slot_id),
+                                                        ctypes.byref(c_bias_voltage))
+        self.check_error(error_code, "SEPIA2_VCL_GetBiasVoltage")
+
+        return c_bias_voltage.value
+
+    @handle_errors
+    def spm_decode_module_state(self, state: int) -> str:
+        c_status_text = ctypes.create_string_buffer(79)
+
+        error_code = self.dll.SEPIA2_SPM_DecodeModuleState(ctypes.c_ushort(state),
+                                                           ctypes.byref(c_status_text))
+        self.check_error(error_code, "SEPIA2_SPM_DecodeModuleState")
+
+        return c_status_text.value.decode(self.str_encoding)
+
+    @handle_errors
+    def spm_get_fw_version(self, device_id: int, slot_id: int) -> (int, int, int):
+        c_fw_version = ctypes.c_ulong()
+
+        error_code = self.dll.SEPIA2_SPM_GetFWVersion(ctypes.c_int(device_id),
+                                                       ctypes.c_int(slot_id),
+                                                       ctypes.byref(c_fw_version))
+        self.check_error(error_code, "SEPIA2_SPM_GetFWVersion")
+
+        fw_version_bytes = c_fw_version.value.to_bytes(4)
+
+        # major, minor, build
+        return fw_version_bytes[0], fw_version_bytes[1], int.from_bytes(fw_version_bytes[2:])
+
+    @handle_errors
+    def spm_get_sensor_data(self, device_id: int, slot_id: int) \
+            -> (int, int, int, int, int, int, int, int, int):
+        c_sensor_data_array = (ctypes.c_ushort * 9)()
+
+        error_code = self.dll.SEPIA2_SPM_GetSensorData(ctypes.c_int(device_id),
+                                                       ctypes.c_int(slot_id),
+                                                       ctypes.byref(c_sensor_data_array))
+        self.check_error(error_code, "SEPIA2_SPM_GetSensorData")
+
+        # temperatures (6x), overall current, optional sensor 1, optional sensor 2
+        return tuple(c_sensor_data_array)
+
+    @handle_errors
+    def spm_get_temperature_adjust(self, device_id: int, slot_id: int) \
+            -> (int, int, int, int, int, int):
+        c_temperature_array = (ctypes.c_ushort * 6)()
+
+        error_code = self.dll.SEPIA2_SPM_GetTemperatureAdjust(ctypes.c_int(device_id),
+                                                              ctypes.c_int(slot_id),
+                                                              ctypes.byref(c_temperature_array))
+        self.check_error(error_code, "SEPIA2_SPM_GetTemperatureAdjust")
+
+        return tuple(c_temperature_array)
+
+    @handle_errors
+    def spm_get_status_error(self, device_id: int, slot_id: int) -> (PicoquantSepia2SPMStates, int):
+        c_state = ctypes.c_ushort()
+        c_error_code = ctypes.c_short()
+
+        error_code = self.dll.SEPIA2_SPM_GetStatusError(ctypes.c_int(device_id),
+                                                        ctypes.c_int(slot_id),
+                                                        ctypes.byref(c_state),
+                                                        ctypes.byref(c_error_code))
+        self.check_error(error_code, "SEPIA2_SPM_GetStatusError")
+
+        return PicoquantSepia2SPMStates(c_state.value), c_error_code
+
+    @handle_errors
+    def spm_update_firmware(self, device_id: int, slot_id: int, fwr_filename: str) -> None:
+        c_fwr_filename = ctypes.create_string_buffer(fwr_filename)
+
+        error_code = self.dll.SEPIA2_SPM_UpdateFirmware(ctypes.c_int(device_id),
+                                                        ctypes.c_int(slot_id),
+                                                        c_fwr_filename)
+        self.check_error(error_code, "SEPIA2_SPM_UpdateFirmware")
+
+    @handle_errors
+    def spm_set_fram_write_protect(self, device_id: int, slot_id: int, write_protect: bool) -> None:
+        error_code = self.dll.SEPIA2_SPM_SetFRAMWriteProtect(ctypes.c_int(device_id),
+                                                             ctypes.c_int(slot_id),
+                                                             ctypes.c_ubyte(write_protect))
+        self.check_error(error_code, "SEPIA2_SPM_SetFRAMWriteProtect")
+
+    @handle_errors
+    def spm_get_fiber_amplifier_fail(self, device_id: int, slot_id: int) -> bool:
+        c_fiber_amp_fail = ctypes.c_ubyte()
+
+        error_code = self.dll.SEPIA2_SPM_GetFiberAmplifierFail(ctypes.c_int(device_id),
+                                                               ctypes.c_int(slot_id),
+                                                               ctypes.byref(c_fiber_amp_fail))
+        self.check_error(error_code, "SEPIA2_SPM_GetFiberAmplifierFail")
+
+        return bool(c_fiber_amp_fail.value)
+
+    @handle_errors
+    def spm_reset_fiber_amplifier_fail(self, device_id: int, slot_id: int, fiber_amp_fail: bool) \
+            -> None:
+        error_code = self.dll.SEPIA2_SPM_ResetFiberAmplifierFail(ctypes.c_int(device_id),
+                                                                 ctypes.c_int(slot_id),
+                                                                 ctypes.c_ubyte(fiber_amp_fail))
+        self.check_error(error_code, "SEPIA2_SPM_ResetFiberAmplifierFail")
+
+    @handle_errors
+    def spm_get_pump_power_state(self, device_id: int, slot_id: int) -> (bool, bool):
+        c_pump_state = ctypes.c_ubyte()
+        c_pump_mode = ctypes.c_ubyte()
+
+        error_code = self.dll.SEPIA2_SPM_GetPumpPowerState(ctypes.c_int(device_id),
+                                                           ctypes.c_int(slot_id),
+                                                           ctypes.byref(c_pump_state),
+                                                           ctypes.byref(c_pump_mode))
+        self.check_error(error_code, "SEPIA2_SPM_GetPumpPowerState")
+
+        return bool(c_pump_state.value), bool(c_pump_mode)
+
+    @handle_errors
+    def spm_set_pump_power_state(self, device_id: int, slot_id: int, pump_state: bool,
+                                 pump_mode: bool) -> None:
+        error_code = self.dll.SEPIA2_SPM_SetPumpPowerState(ctypes.c_int(device_id),
+                                                           ctypes.c_int(slot_id),
+                                                           ctypes.c_ubyte(pump_state),
+                                                           ctypes.c_ubyte(pump_mode))
+        self.check_error(error_code, "SEPIA2_SPM_SetPumpPowerState")
+
+    @handle_errors
+    def spm_get_operation_timers(self, device_id: int, slot_id: int) -> (int, int, int, int):
+        c_main_power_switch = ctypes.c_ulong()
+        c_uptime_overall = ctypes.c_ulong()
+        c_uptime_delivery = ctypes.c_ulong()
+        c_uptime_fiber_change = ctypes.c_ulong()
+
+        error_code = self.dll.SEPIA2_SPM_GetOperationTimers(ctypes.c_int(device_id),
+                                                            ctypes.c_int(slot_id),
+                                                            ctypes.byref(c_main_power_switch),
+                                                            ctypes.byref(c_uptime_overall),
+                                                            ctypes.byref(c_uptime_delivery),
+                                                            ctypes.byref(c_uptime_fiber_change))
+        self.check_error(error_code, "SEPIA2_SPM_GetOperationTimers")
+
+    @handle_errors
+    def sws_decode_module_type(self, module_type: int) -> str:
+        c_module_type_str = ctypes.create_string_buffer(32)
+
+        error_code = self.dll.SEPIA2_SWS_DecodeModuleType(ctypes.c_int(module_type),
+                                                          ctypes.byref(c_module_type_str))
+        self.check_error(error_code, "SEPIA2_SWS_DecodeModuleType")
+
+        return c_module_type_str.value.decode(self.str_encoding)
+
+    @handle_errors
+    def sws_decode_module_state(self, state: int) -> str:
+        c_state_str = ctypes.create_string_buffer(148)
+
+        error_code = self.dll.SEPIA2_SWS_DecodeModuleState(ctypes.c_ushort(state),
+                                                           ctypes.byref(c_state_str))
+        self.check_error(error_code, "SEPIA2_SWS_DecodeModuleState")
+
+        return c_state_str.value.decode(self.str_encoding)
+
+    @handle_errors
+    def sws_get_module_type(self, device_id: int, slot_id: int) -> int:
+        c_module_type = ctypes.c_int()
+
+        error_code = self.dll.SEPIA2_SWS_GetModuleType(ctypes.c_int(device_id),
+                                                       ctypes.c_int(slot_id),
+                                                       ctypes.byref(c_module_type))
+        self.check_error(error_code, "SEPIA2_SWS_GetModuleType")
+
+        return c_module_type.value
+
+    @handle_errors
+    def sws_get_status_error(self, device_id: int, slot_id: int) -> (PicoquantSepia2SWSStates, int):
+        c_state = ctypes.c_ushort()
+        c_error_code = ctypes.c_int()
+
+        error_code = self.dll.SEPIA2_SWS_GetStatusError(ctypes.c_int(device_id),
+                                                        ctypes.c_int(slot_id),
+                                                        ctypes.byref(c_state),
+                                                        ctypes.byref(c_error_code))
+        self.check_error(error_code, "SEPIA2_SWS_GetStatusError")
+
+        return PicoquantSepia2SWSStates(c_state.value), c_state.error_code
+
+    @handle_errors
+    def sws_get_param_ranges(self, device_id: int, slot_id: int) \
+            -> (int, int, int, int, int, int, int, int, int, int):
+        c_wavelen_upper = ctypes.c_ulong()
+        c_wavelen_lower = ctypes.c_ulong()
+        c_wavelen_stepwidth = ctypes.c_ulong()
+        c_wavelen_power_mode_toggle = ctypes.c_ulong()
+        c_bandwidth_upper = ctypes.c_ulong()
+        c_bandwidth_lower = ctypes.c_ulong()
+        c_backwidth_stepwidth = ctypes.c_ulong()
+        c_beam_shifter_upper = ctypes.c_int()
+        c_beam_shifter_lower = ctypes.c_int()
+        c_beam_shifter_stepwidth = ctypes.c_int()
+        
+        error_code = self.dll.SEPIA2_SWS_GetParamRanges(ctypes.c_int(device_id),
+                                                        ctypes.c_int(slot_id),
+                                                        ctypes.byref(c_wavelen_upper),
+                                                        ctypes.byref(c_wavelen_lower),
+                                                        ctypes.byref(c_wavelen_stepwidth),
+                                                        ctypes.byref(c_wavelen_power_mode_toggle),
+                                                        ctypes.byref(c_bandwidth_upper),
+                                                        ctypes.byref(c_bandwidth_lower),
+                                                        ctypes.byref(c_backwidth_stepwidth),
+                                                        ctypes.byref(c_beam_shifter_upper),
+                                                        ctypes.byref(c_beam_shifter_lower),
+                                                        ctypes.byref(c_beam_shifter_stepwidth))
+        self.check_error(error_code, "SEPIA2_SWS_GetParamRanges")
+
+        return c_wavelen_upper.value, c_wavelen_lower.value, c_wavelen_stepwidth.value, \
+            c_wavelen_power_mode_toggle.value, c_bandwidth_upper.value, c_bandwidth_lower.value, \
+            c_backwidth_stepwidth.value, c_beam_shifter_upper.value, c_beam_shifter_lower.value, \
+            c_beam_shifter_stepwidth.value
+
+    @handle_errors
+    def sws_get_parameters(self, device_id: int, slot_id: int) -> (int, int):
+        c_wavelen = ctypes.c_ulong()
+        c_bandwidth = ctypes.c_ulong()
+
+        error_code = self.dll.SEPIA2_SWS_GetParameters(ctypes.c_int(device_id),
+                                                       ctypes.c_int(slot_id),
+                                                       ctypes.byref(c_wavelen),
+                                                       ctypes.byref(c_bandwidth))
+        self.check_error(error_code, "SEPIA2_SWS_GetParameters")
+
+        return c_wavelen.value, c_bandwidth.value
+
+    @handle_errors
+    def sws_set_parameters(self, device_id: int, slot_id: int, wavelength: int, bandwidth: int) \
+            -> None:
+        error_code = self.dll.SEPIA2_SWS_SetParameters(ctypes.c_int(device_id),
+                                                       ctypes.c_int(slot_id),
+                                                       ctypes.c_ulong(wavelength),
+                                                       ctypes.c_ulong(bandwidth))
+        self.check_error(error_code, "SEPIA2_SWS_SetParameters")
+
+    @handle_errors
+    def sws_get_intensity(self, device_id: int, slot_id: int) -> (int, float):
+        c_intensity_raw = ctypes.c_ulong()
+        c_intensity = ctypes.c_float()
+
+        error_code = self.dll.SEPIA2_SWS_GetIntensity(ctypes.c_int(device_id),
+                                                      ctypes.c_int(slot_id),
+                                                      ctypes.byref(c_intensity_raw),
+                                                      ctypes.byref(c_intensity))
+        self.check_error(error_code, "SEPIA2_SWS_GetIntensity")
+
+        return c_intensity_raw.value, c_intensity.value
+
+    @handle_errors
+    def sws_get_fw_version(self, device_id: int, slot_id: int) -> (int, int, int):
+        c_fw_version = ctypes.c_ulong()
+
+        error_code = self.dll.SEPIA2_SWS_GetFWVersion(ctypes.c_int(device_id),
+                                                       ctypes.c_int(slot_id),
+                                                       ctypes.byref(c_fw_version))
+        self.check_error(error_code, "SEPIA2_SWS_GetFWVersion")
+
+        fw_version_bytes = c_fw_version.value.to_bytes(4)
+
+        # major, minor, build
+        return fw_version_bytes[0], fw_version_bytes[1], int.from_bytes(fw_version_bytes[2:])
+
+    @handle_errors
+    def sws_update_firmware(self, device_id: int, slot_id: int, fwr_filename: str) -> None:
+        c_fwr_filename_str = ctypes.create_string_buffer(fwr_filename)
+
+        error_code = self.dll.SEPIA2_SWS_UpdateFirmware(ctypes.c_int(device_id),
+                                                        ctypes.c_int(slot_id),
+                                                        c_fwr_filename_str)
+        self.check_error(error_code, "SEPIA2_SWS_UpdateFirmware")
+
+    @handle_errors
+    def sws_set_fram_write_protect(self, device_id: int, slot_id: int, write_protect: bool) -> None:
+        error_code = self.dll.SEPIA2_SWS_SetFRAMWriteProtect(ctypes.c_int(device_id),
+                                                             ctypes.c_int(slot_id),
+                                                             ctypes.c_ubyte(write_protect))
+        self.check_error(error_code, "SEPIA2_SWS_SetFRAMWriteProtect")
+
+    @handle_errors
+    def sws_get_beam_pos(self, device_id: int, slot_id: int) -> (int, int):
+        c_beam_vpos = ctypes.c_short()
+        c_beam_hpos = ctypes.c_short()
+
+        error_code = self.dll.SEPIA2_SWS_GetBeamPos(ctypes.c_int(device_id), ctypes.c_int(slot_id),
+                                                    ctypes.byref(c_beam_vpos),
+                                                    ctypes.byref(c_beam_hpos))
+        self.check_error(error_code, "SEPIA2_SWS_GetBeamPos")
+
+        return c_beam_vpos.value, c_beam_hpos.value
+
+    @handle_errors
+    def sws_set_beam_pos(self, device_id: int, slot_id: int, beam_vpos: int, beam_hpos: int) \
+            -> None:
+        error_code = self.dll.SEPIA2_SWS_SetBeamPos(ctypes.c_int(device_id), ctypes.c_int(slot_id),
+                                                    ctypes.c_short(beam_vpos),
+                                                    ctypes.c_short(beam_hpos))
+        self.check_error(error_code, "SEPIA2_SWS_SetBeamPos")
+
+    @handle_errors
+    def sws_set_calibration_mode(self, device_id: int, slot_id: int, calibration_mode: bool) -> None:
+        error_code = self.dll.SEPIA2_SWS_SetCalibrationMode(ctypes.c_int(device_id),
+                                                            ctypes.c_int(slot_id),
+                                                            ctypes.c_ubyte(calibration_mode))
+        self.check_error(error_code, "SEPIA2_SWS_SetCalibrationMode")
+
+    @handle_errors
+    def sws_get_cal_table_size(self, device_id: int, slot_id: int) -> (int, int):
+        c_wavelen_count = ctypes.c_ushort()
+        c_bandwidth_count = ctypes.c_ushort()
+
+        error_code = self.dll.SEPIA2_SWS_GetCalTableSize(ctypes.c_int(device_id),
+                                                         ctypes.c_int(slot_id),
+                                                         ctypes.byref(c_wavelen_count),
+                                                         ctypes.byref(c_bandwidth_count))
+        self.check_error(error_code, "SEPIA2_SWS_GetCalTableSize")
+
+        return c_wavelen_count.value, c_bandwidth_count.value
+
+    @handle_errors
+    def sws_set_cal_table_size(self, device_id: int, slot_id: int, wavelen_count: int,
+                               bandwidth_count: int, init: bool) -> None:
+        error_code = self.dll.SEPIA2_SWS_SetCalTableSize(ctypes.c_int(device_id),
+                                                         ctypes.c_int(slot_id),
+                                                         ctypes.c_ushort(wavelen_count),
+                                                         ctypes.c_ushort(bandwidth_count),
+                                                         ctypes.c_byte(init))
+        self.check_error(error_code, "SEPIA2_SWS_SetCalTableSize")
+
+    @handle_errors
+    def sws_get_cal_point_info(self, device_id: int, slot_id: int, wavelen_id: int,
+                               bandwidth_id: int) -> (int, int, int, int):
+        c_wavelength = ctypes.c_ulong()
+        c_bandwidth = ctypes.c_ulong()
+        c_beam_vpos = ctypes.c_short()
+        c_beam_hpos = ctypes.c_short()
+
+        error_code = self.dll.SEPIA2_SWS_GetCalPointInfo(ctypes.c_int(device_id),
+                                                         ctypes.c_int(slot_id),
+                                                         ctypes.c_short(wavelen_id),
+                                                         ctypes.c_short(bandwidth_id),
+                                                         ctypes.byref(c_wavelength),
+                                                         ctypes.byref(c_bandwidth),
+                                                         ctypes.byref(c_beam_vpos),
+                                                         ctypes.byref(c_beam_hpos))
+        self.check_error(error_code, "SEPIA2_SWS_GetCalPointInfo")
+
+        return c_wavelength.value, c_bandwidth.value, c_beam_vpos.value, c_beam_hpos.value
+
+    @handle_errors
+    def sws_set_cal_point_values(self, device_id: int, slot_id: int, wavelen_id: int,
+                                 bandwidth_id: int, beam_vpos: int, beam_hpos: int) -> None:
+        error_code = self.dll.SEPIA2_SWS_SetCalPointValues(ctypes.c_int(device_id),
+                                                           ctypes.c_int(slot_id),
+                                                           ctypes.c_short(wavelen_id),
+                                                           ctypes.c_short(bandwidth_id),
+                                                           ctypes.c_short(beam_vpos),
+                                                           ctypes.c_short(beam_hpos))
+        self.check_error(error_code, "SEPIA2_SWS_SetCalPointValues")
+
+    @handle_errors
+    def ssm_decode_freq_trig_mode(self, device_id: int, slot_id: int, freq_trig_id: int) -> (str, int, bool):
+        c_freq_trig_str = ctypes.create_string_buffer(15)
+        c_frequency = ctypes.c_int()
+        c_trig_level_enabled = ctypes.c_byte()
+
+        error_code = self.dll.SEPIA2_SSM_DecodeFreqTrigMode(ctypes.c_int(device_id),
+                                                            ctypes.c_int(slot_id),
+                                                            ctypes.c_int(freq_trig_id),
+                                                            ctypes.byref(c_freq_trig_str),
+                                                            ctypes.byref(c_frequency),
+                                                            ctypes.byref(c_trig_level_enabled))
+        self.check_error(error_code, "SEPIA2_SSM_DecodeFreqTrigMode")
+
+        return c_freq_trig_str.value.decode(self.str_encoding), c_frequency.value, \
+            bool(c_trig_level_enabled.value)
+
+    @handle_errors
+    def ssm_get_trig_level_range(self, device_id: int, slot_id: int) -> (int, int, int):
+        c_trig_level_upper = ctypes.c_int()
+        c_trig_level_lower = ctypes.c_int()
+        c_trig_level_resolution = ctypes.c_int()
+
+        error_code = self.dll.SEPIA2_SSM_GetTrigLevelRange(ctypes.c_int(device_id),
+                                                           ctypes.c_int(slot_id),
+                                                           ctypes.byref(c_trig_level_upper),
+                                                           ctypes.byref(c_trig_level_lower),
+                                                           ctypes.byref(c_trig_level_resolution))
+        self.check_error(error_code, "SEPIA2_SSM_GetTrigLevelRange")
+
+        return c_trig_level_upper.value, c_trig_level_lower.value, c_trig_level_resolution.value
+
+    @handle_errors
+    def ssm_get_trigger_data(self, device_id: int, slot_id: int) -> (int, int):
+        c_freq_trig_id = ctypes.c_int()
+        c_trig_level = ctypes.c_int()
+
+        error_code = self.dll.SEPIA2_SSM_GetTriggerData(ctypes.c_int(device_id),
+                                                        ctypes.c_int(slot_id),
+                                                        ctypes.byref(c_freq_trig_id),
+                                                        ctypes.byref(c_trig_level))
+        self.check_error(error_code, "SEPIA2_SSM_GetTriggerData")
+
+        return c_freq_trig_id.value, c_trig_level.value
+
+    @handle_errors
+    def ssm_set_trigger_data(self, device_id: int, slot_id: int, freq_trig_id: int,
+                             trig_level: int) -> None:
+        error_code = self.dll.SEPIA2_SSM_SetTriggerData(ctypes.c_int(device_id),
+                                                        ctypes.c_int(slot_id),
+                                                        ctypes.c_int(freq_trig_id),
+                                                        ctypes.c_int(trig_level))
+        self.check_error(error_code, "SEPIA2_SSM_SetTriggerData")
+
+    @handle_errors
+    def ssm_set_fram_write_protect(self, device_id: int, slot_id: int, write_protect: bool) -> None:
+        error_code = self.dll.SEPIA2_SSM_SetFRAMWriteProtect(ctypes.c_int(device_id),
+                                                             ctypes.c_int(slot_id),
+                                                             ctypes.c_ubyte(write_protect))
+        self.check_error(error_code, "SEPIA2_SSM_SetFRAMWriteProtect")
+
+    @handle_errors
+    def ssm_get_fram_write_protect(self, device_id: int, slot_id: int) -> bool:
+        c_write_protect = ctypes.c_ubyte()
+
+        error_code = self.dll.SEPIA2_SSM_GetFRAMWriteProtect(ctypes.c_int(device_id),
+                                                             ctypes.c_int(slot_id),
+                                                             ctypes.byref(c_write_protect))
+        self.check_error(error_code, "SEPIA2_SSM_GetFRAMWriteProtect")
+
+        return bool(c_write_protect.value)
