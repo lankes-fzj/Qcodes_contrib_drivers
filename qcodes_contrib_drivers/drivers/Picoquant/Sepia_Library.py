@@ -1,8 +1,8 @@
 import ctypes
 import datetime
-import enum
-import os
+import math
 import typing
+import warnings
 
 from .Sepia_Library_utils import PicoquantSepia2LibError, handle_errors, \
     PicoquantSepia2WorkingMode, PicoquantSepia2SupportRequestOptions, \
@@ -1131,7 +1131,7 @@ class PicoquantSepia2Lib:
     @handle_errors
     def som_set_out_n_sync_enable(self, device_id: int, slot_id: int,
                                   out_enable_list: typing.Sequence[bool],
-                                  sync_enable_list: typing.Sequence[bool], 
+                                  sync_enable_list: typing.Sequence[bool],
                                   sync_inverse: bool) -> None:
         """This function sets the new values for the output control and sync signal composing.
 
@@ -1499,7 +1499,7 @@ class PicoquantSepia2Lib:
     @handle_errors
     def somd_set_out_n_sync_enable(self, device_id: int, slot_id: int,
                                    out_enable_list: typing.Sequence[bool],
-                                   sync_enable_list: typing.Sequence[bool], 
+                                   sync_enable_list: typing.Sequence[bool],
                                    sync_inverse: bool) -> None:
         """This function sets the new values for the output control and sync signal composing.
 
@@ -1626,7 +1626,8 @@ class PicoquantSepia2Lib:
         return c_status_text.value.decode(self.str_encoding)
 
     @handle_errors
-    def somd_get_status_error(self, device_id: int, slot_id: int) -> (PicoquantSepia2SOMDState, int):
+    def somd_get_status_error(self, device_id: int, slot_id: int) \
+            -> (PicoquantSepia2SOMDState, int):
         """The state is bit coded and can be decoded by the SOMD function
         `somd_decode_module_state`. If the error state HARDWARE_ERROR (0x10) is set, the
         `error_code` is transmitted as well, else this variable is zero. As a side effect, error
@@ -1865,6 +1866,18 @@ class PicoquantSepia2Lib:
 
     @handle_errors
     def slm_decode_freq_trig_mode(self, freq: int) -> str:
+        """Returns the frequency resp. trigger mode string at list position `freq` for any SLM
+        module.
+        
+        This function also works "off line", since all SLM modules provide the same list of integer
+        frequencies resp. external trigger modi.
+
+        Args:
+            freq (int): index into the list of frequencies/external trigger modi (0..7)
+
+        Returns:
+            freq_trig_mode (str): frequency resp. trigger mode string
+        """
         c_freq_trig_mode = ctypes.create_string_buffer(28)
 
         error_code = self.dll.SEPIA2_SLM_DecodeFreqTrigMode(ctypes.c_int(freq),
@@ -1875,6 +1888,17 @@ class PicoquantSepia2Lib:
 
     @handle_errors
     def slm_decode_head_type(self, head_type: int) -> str:
+        """Returns the head type string at list position `head_type` for any SLM module.
+        
+        This function also works "off line", since all SLM modules provide the same list of pulsed
+        LED / laser head types.
+
+        Args:
+            head_type (int): index into the list of pulsed LED / laser head types (0..3)
+
+        Returns:
+            head_type_str (str): head type string
+        """
         c_head_type_str = ctypes.create_string_buffer(18)
 
         error_code = self.dll.SEPIA2_SLM_DecodeHeadType(ctypes.c_int(head_type),
@@ -1884,35 +1908,18 @@ class PicoquantSepia2Lib:
         return c_head_type_str.value.decode(self.str_encoding)
 
     @handle_errors
-    def slm_get_parameters(self, device_id: int, slot_id: int) -> (int, bool, int, float):
-        c_freq = ctypes.c_int()
-        c_pulse_mode = ctypes.c_ubyte()
-        c_head_type = ctypes.c_int()
-        c_intensity = ctypes.c_ubyte()
+    def slm_get_intensity_fine_step(self, device_id: int, slot_id: int) -> int:
+        """This function gets the current intensity value of a given SLM driver module
 
-        error_code = self.dll.SEPIA2_SLM_GetParameters(ctypes.c_int(device_id),
-                                                       ctypes.c_int(slot_id),
-                                                       ctypes.byref(c_freq),
-                                                       ctypes.byref(c_pulse_mode),
-                                                       ctypes.byref(c_head_type),
-                                                       ctypes.byref(c_intensity))
-        self.check_error(error_code, "SEPIA2_SLM_GetParameters")
+        `intensity` stands for the desired per mille value of the laser head controlling voltage.
 
-        return c_freq.value, bool(c_pulse_mode.value), c_head_type.value, \
-            c_intensity.value / 100
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SLM module
 
-    @handle_errors
-    def slm_set_parameters(self, device_id: int, slot_id: int, freq: int, pulse_mode: bool,
-                           intensity: float) -> None:
-        error_code = self.dll.SEPIA2_SLM_SetParameters(ctypes.c_int(device_id),
-                                                       ctypes.c_int(slot_id),
-                                                       ctypes.c_int(freq),
-                                                       ctypes.c_ubyte(pulse_mode),
-                                                       ctypes.c_ubyte(round(intensity * 100)))
-        self.check_error(error_code, "SEPIA2_SLM_SetParameters")
-
-    @handle_errors
-    def slm_get_intensity_fine_step(self, device_id: int, slot_id: int) -> float:
+        Returns:
+            intensity (int): intensity (as per mille of the ctrl. voltage, 0..1000)
+        """
         c_intensity = ctypes.c_ushort()
 
         error_code = self.dll.SEPIA2_SLM_GetIntensityFineStep(ctypes.c_int(device_id),
@@ -1920,18 +1927,48 @@ class PicoquantSepia2Lib:
                                                               ctypes.byref(c_intensity))
         self.check_error(error_code, "SEPIA2_SLM_GetIntensityFineStep")
 
-        return c_intensity.value / 1000
+        return c_intensity.value
 
 
     @handle_errors
-    def slm_set_intensity_fine_step(self, device_id: int, slot_id: int, intensity: float) -> None:
-        error_code = self.dll.SEPIA2_SLM_SetIntensityFineStep(ctypes.c_int(device_id),
-                                                              ctypes.c_int(slot_id),
-                                                              ctypes.c_ushort(round(intensity * 1000)))
+    def slm_set_intensity_fine_step(self, device_id: int, slot_id: int, intensity: int) -> None:
+        """This function sets the intensity value of a given SLM driver module
+
+        `intensity` stands for the desired per mille value of the laser head controlling voltage.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SLM module
+            intensity (int): intensity (as per mille of the ctrl. voltage, 0..1000)
+        """
+        error_code = self.dll.SEPIA2_SLM_SetIntensityFineStep(
+            ctypes.c_int(device_id), ctypes.c_int(slot_id),
+            ctypes.c_ushort(intensity))
         self.check_error(error_code, "SEPIA2_SLM_SetIntensityFineStep")
 
     @handle_errors
     def slm_get_pulse_parameters(self, device_id: int, slot_id: int) -> (int, bool, int):
+        """This function gets the current pulse parameter values of a given SLM driver module:
+
+        `freq` stands for an index into the list of frequencies / ext. trigger modi. Decode this
+        value using the function `slm_decode_freq_trig_mode`.
+
+        `pulse_mode` stands for a boolean and may be read as follows:
+            True: "pulses enabled"; False: either "laser off" or "continuous wave", depending on the
+            capabilities of the used head.
+
+        `head_type` stands for an index into the list of pulsed LED / laser head types. Decode this
+        value using the SLM function `slm_decode_head_type`.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SLM module
+
+        Returns:
+            freq (int): index into list of frequencies/trigger modi (0..7)
+            pulse_mode (bool): pulse enabled
+            head_type (int): index into list of pulsed LED/laser head types (0..3)
+        """
         c_freq = ctypes.c_int()
         c_pulse_mode = ctypes.c_ubyte()
         c_head_type = ctypes.c_int()
@@ -1946,7 +1983,23 @@ class PicoquantSepia2Lib:
         return c_freq.value, bool(c_pulse_mode.value), c_head_type.value
 
     @handle_errors
-    def slm_set_pulse_parameters(self, device_id: int, slot_id: int, freq: int, pulse_mode: bool) -> None:
+    def slm_set_pulse_parameters(self, device_id: int, slot_id: int, freq: int, pulse_mode: bool) \
+            -> None:
+        """This function gets the current pulse parameter values of a given SLM driver module.
+
+        `freq` stands for an index into the list of frequencies / ext. trigger modi. Decode this
+        value using the function `slm_decode_freq_trig_mode`.
+
+        `pulse_mode` stands for a boolean and may be read as follows:
+            True: "pulses enabled"; False: either "laser off" or "continuous wave", depending on the
+            capabilities of the used head.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SLM module
+            freq (int): index into list of frequencies/trigger modi (0..7)
+            pulse_mode (bool): pulse enabled
+        """
         error_code = self.dll.SEPIA2_SLM_SetPulseParameters(ctypes.c_int(device_id),
                                                             ctypes.c_int(slot_id),
                                                             ctypes.c_int(freq),
@@ -1954,7 +2007,99 @@ class PicoquantSepia2Lib:
         self.check_error(error_code, "SEPIA2_SLM_SetPulseParameters")
 
     @handle_errors
+    def slm_get_parameters(self, device_id: int, slot_id: int) -> (int, bool, int, int):
+        """DEPRECATED, instead use `slm_get_pulse_parameters` and `slm_get_intensity_fine_step`
+        
+        This function gets the current values of a given SLM driver module:
+        
+        `freq` stands for an index into the list of frequencies / ext. trigger modi. Decode this
+        value using the function `slm_decode_freq_trig_mode`.
+
+        `pulse_mode` stands for a boolean and may be read as follows:
+            True: "pulses enabled"; False: either "laser off" or "continuous wave", depending on the
+            capabilities of the used head.
+
+        `head_type` stands for an index into the list of pulsed LED / laser head types. Decode this
+        value using the SLM function `slm_decode_head_type`.
+
+        `intensity` stands for the desired percent value of the laser head controlling voltage.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SLM module
+
+        Returns:
+            freq (int): index into list of frequencies/trigger modi (0..7)
+            pulse_mode (bool): pulse enabled
+            head_type (int): index into list of pulsed LED/laser head types (0..3)
+            intensity (int): intensity (as percent of the ctrl. voltage, 0..100)
+        """
+        warnings.warn("'slm_get_parameters' is deprecated. Instead use " +
+                      "'slm_get_pulse_parameters' and 'slm_get_intensity_fine_step'",
+                      DeprecationWarning)
+
+        c_freq = ctypes.c_int()
+        c_pulse_mode = ctypes.c_ubyte()
+        c_head_type = ctypes.c_int()
+        c_intensity = ctypes.c_ubyte()
+
+        error_code = self.dll.SEPIA2_SLM_GetParameters(ctypes.c_int(device_id),
+                                                       ctypes.c_int(slot_id),
+                                                       ctypes.byref(c_freq),
+                                                       ctypes.byref(c_pulse_mode),
+                                                       ctypes.byref(c_head_type),
+                                                       ctypes.byref(c_intensity))
+        self.check_error(error_code, "SEPIA2_SLM_GetParameters")
+
+        return c_freq.value, bool(c_pulse_mode.value), c_head_type.value, c_intensity.value
+
+    @handle_errors
+    def slm_set_parameters(self, device_id: int, slot_id: int, freq: int, pulse_mode: bool,
+                           intensity: int) -> None:
+        """DEPRECATED, instead use `slm_set_pulse_parameters` and `slm_set_intensity_fine_step`
+
+        This function gets the current values of a given SLM driver module:
+        
+        `freq` stands for an index into the list of frequencies / ext. trigger modi. Decode this
+        value using the function `slm_decode_freq_trig_mode`.
+
+        `pulse_mode` stands for a boolean and may be read as follows:
+            True: "pulses enabled"; False: either "laser off" or "continuous wave", depending on the
+            capabilities of the used head.
+
+        `intensity` stands for the desired percent value of the laser head controlling voltage.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SLM module
+            freq (int): index into list of frequencies/trigger modi (0..7)
+            pulse_mode (bool): pulse enabled
+            intensity (int): intensity (as percent of the ctrl. voltage, 0..100)
+        """
+        warnings.warn("'slm_set_parameters' is deprecated. Instead use " +
+                      "'slm_set_pulse_parameters' and 'slm_set_intensity_fine_step'",
+                      DeprecationWarning)
+
+        error_code = self.dll.SEPIA2_SLM_SetParameters(ctypes.c_int(device_id),
+                                                       ctypes.c_int(slot_id),
+                                                       ctypes.c_int(freq),
+                                                       ctypes.c_ubyte(pulse_mode),
+                                                       ctypes.c_ubyte(intensity))
+        self.check_error(error_code, "SEPIA2_SLM_SetParameters")
+
+    @handle_errors
     def sml_decode_head_type(self, head_type: int) -> str:
+        """Returns the head type string at list position `head_type` for any SML module.
+        
+        This function also works "off line", since all SML modules provide the same list of pulsed
+        LED / laser head types.
+
+        Args:
+            head_type (int): index into the list of pulsed LED / laser head types (0..2)
+
+        Returns:
+            head_type_str (str): head type string
+        """
         c_head_type_str = ctypes.create_string_buffer(18)
 
         error_code = self.dll.SEPIA2_SML_DecodeHeadType(ctypes.c_int(head_type),
@@ -1964,7 +2109,25 @@ class PicoquantSepia2Lib:
         return c_head_type_str.value.decode(self.str_encoding)
 
     @handle_errors
-    def sml_get_parameters(self, device_id: int, slot_id: int) -> (bool, int, float):
+    def sml_get_parameters(self, device_id: int, slot_id: int) -> (bool, int, int):
+        """This function gets the current values of a given SML multi lasers driver module:
+        
+        `pulse_mode` stands for a boolean and may be read as follows:
+            True: "pulses enabled"; False: "continuous wave".
+        
+        `head_type` stands for an index into the list of pulsed LED / laser head types
+        
+        `intensity` stands for the current percentage of the optical power of the laser heads.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SML module
+
+        Returns:
+            pulse_mode (bool): pulse enabled
+            head_type (int): index into list of pulsed LED/laser head types (0..2)
+            intensity (int): intensity (as percent of optical power; 0..100)
+        """
         c_pulse_mode = ctypes.c_ubyte()
         c_head_type = ctypes.c_int()
         c_intensity = ctypes.c_ubyte()
@@ -1976,18 +2139,45 @@ class PicoquantSepia2Lib:
                                                        ctypes.byref(c_intensity))
         self.check_error(error_code, "SEPIA2_SML_GetParameters")
 
-        return bool(c_pulse_mode.value), c_head_type.value, c_intensity.value / 100
+        return bool(c_pulse_mode.value), c_head_type.value, c_intensity.value
 
     @handle_errors
-    def sml_set_parameters(self, device_id: int, slot_id: int, pulse_mode: bool, intensity: float) -> None:
+    def sml_set_parameters(self, device_id: int, slot_id: int, pulse_mode: bool, intensity: int) \
+            -> None:
+        """This function sets the current values of a given SML multi lasers driver module:
+        
+        `pulse_mode` stands for a boolean and may be read as follows:
+            True: "pulses enabled"; False: "continuous wave".
+        
+        `head_type` stands for an index into the list of pulsed LED / laser head types
+        
+        `intensity` stands for the current percentage of the optical power of the laser heads.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SML module
+            pulse_mode (bool): pulse enabled
+            intensity (int): intensity (as percent of optical power; 0..100)
+        """
         error_code = self.dll.SEPIA2_SML_SetParameters(ctypes.c_int(device_id),
                                                        ctypes.c_int(slot_id),
                                                        ctypes.c_ubyte(pulse_mode),
-                                                       ctypes.c_ubyte(round(intensity * 100)))
+                                                       ctypes.c_ubyte(intensity))
         self.check_error(error_code, "SEPIA2_SML_SetParameters")
 
     @handle_errors
     def swm_decode_range_idx(self, device_id: int, slot_id: int, time_base_id: int) -> int:
+        """This function returns the upper limit of the time base identified by `time_base_id` in
+        nano seconds.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SWM module
+            time_base_id (int): index into the list of time bases
+
+        Returns:
+            upper_limit (int): upper limit of the range in nsec
+        """
         c_upper_limit = ctypes.c_int()
 
         error_code = self.dll.SEPIA2_SWM_DecodeRangeIdx(ctypes.c_int(device_id),
@@ -2001,6 +2191,21 @@ class PicoquantSepia2Lib:
     @handle_errors
     def swm_get_ui_constants(self, device_id: int, slot_id: int) \
             -> (int, int, int, int, int, int, int):
+        """This function returns all necessary values to initialize a GUI for all legal entries.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SWM module
+
+        Returns:
+            time_bases_count (int): count of entries in the list of time bases
+            max_amplitude (int): maximum pulse amplitude in mV
+            max_slew_rate (int): maximum ramp slew rate in mV/μsec
+            exp_ramp_factor (int): exponential factor for the ramp
+            min_user_val (int): lower limit for user entries in per mille
+            max_user_val (int): upper limit for user entries in per mille
+            user_resolution (int): user resolution i.e. stepwidth for user entries in per mille
+        """
         c_time_bases_count = ctypes.c_ubyte()
         c_max_amplitude = ctypes.c_ushort()
         c_max_slew_rate = ctypes.c_ushort()
@@ -2008,7 +2213,7 @@ class PicoquantSepia2Lib:
         c_min_user_val = ctypes.c_ushort()
         c_max_user_val = ctypes.c_ushort()
         c_user_resolution = ctypes.c_ushort()
-        
+
         error_code = self.dll.SEPIA2_SWM_GetUIConstants(ctypes.c_int(device_id),
                                                         ctypes.c_int(slot_id),
                                                         ctypes.byref(c_time_bases_count),
@@ -2027,6 +2232,21 @@ class PicoquantSepia2Lib:
     @handle_errors
     def swm_get_curve_params(self, device_id: int, slot_id: int, curve_id: int) \
             -> (int, int, int, int, int, int):
+        """This function returns the describing parameters of the curve identified by `curve_id`.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SWM module
+            curve_id (int): curve number (0; 1)
+
+        Returns:
+            time_base_id (int): index into the list of time bases
+            pulse_amplitude (int): pulse amplitude (0..1000) in per mille of the max. amplitude
+            ramp_slew_rate (int): ramp slew rate (0..1000) in per mille of the max. slew rate
+            pulse_start_delay (int): pulse start delay (0..1000) in per mille of the time base
+            ramp_start_delay (int): ramp start delay (0..1000) in per mille of the time base
+            wave_stop_delay (int): wave stop delay (0..1000) in per mille of the time base
+        """
         c_time_base_id = ctypes.c_ubyte()
         c_pulse_amplitude = ctypes.c_ushort()
         c_ramp_slew_rate = ctypes.c_ushort()
@@ -2036,6 +2256,7 @@ class PicoquantSepia2Lib:
 
         error_code = self.dll.SEPIA2_SWM_GetCurveParams(ctypes.c_int(device_id),
                                                         ctypes.c_int(slot_id),
+                                                        ctypes.c_int(curve_id),
                                                         ctypes.byref(c_time_base_id),
                                                         ctypes.byref(c_pulse_amplitude),
                                                         ctypes.byref(c_ramp_slew_rate),
@@ -2048,11 +2269,25 @@ class PicoquantSepia2Lib:
             c_pulse_start_delay.value, c_ramp_start_delay.value, c_wave_stop_delay.value
 
     @handle_errors
-    def swm_set_curve_params(self, device_id: int, slot_id: int, time_base_id: int,
+    def swm_set_curve_params(self, device_id: int, slot_id: int, curve_id: int, time_base_id: int,
                              pulse_amplitude: int, ramp_slew_rate: int, pulse_start_delay: int,
                              ramp_start_delay: int, wave_stop_delay: int) -> None:
+        """This function sets the describing parameters for the curve identified by `curve_id`.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SWM module
+            curve_id (int): curve number (0; 1)
+            time_base_id (int): index into the list of time bases
+            pulse_amplitude (int): pulse amplitude (0..1000) in per mille of the max. amplitude
+            ramp_slew_rate (int): ramp slew rate (0..1000) in per mille of the max. slew rate
+            pulse_start_delay (int): pulse start delay (0..1000) in per mille of the time base
+            ramp_start_delay (int): ramp start delay (0..1000) in per mille of the time base
+            wave_stop_delay (int): wave stop delay (0..1000) in per mille of the time base
+        """
         error_code = self.dll.SEPIA2_SWM_SetCurveParams(ctypes.c_int(device_id),
                                                         ctypes.c_int(slot_id),
+                                                        ctypes.c_int(curve_id),
                                                         ctypes.c_ubyte(time_base_id),
                                                         ctypes.c_ushort(pulse_amplitude),
                                                         ctypes.c_ushort(ramp_slew_rate),
@@ -2064,12 +2299,28 @@ class PicoquantSepia2Lib:
     @handle_errors
     def swm_get_cal_table_val(self, device_id: int, slot_id: int, table_name: str, table_row: int,
                               table_column: int) -> int:
+        """Returns the content of a given cell of the internal calibration tables. The tables are
+        identified by their names, the index into the table (line-number) is zero based. The most
+        important table is "UI_Consts", because it is the only fixed length table, but contains the
+        lengths of all the other tables. The function is needed for documentation of the module's
+        calibration parameters in case of a support request, beside this, it is solely informative.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SWM module
+            table_name (str): name of the table
+            table_row (int): table row (zero based) to be addressed
+            table_column (int): table column (zero based) to be addressed
+
+        Returns:
+            value (int): calibration value as read from the table
+        """
         c_table_name = ctypes.create_string_buffer(table_name)
         c_value = ctypes.c_ushort()
 
         error_code = self.dll.SEPIA2_SWM_GetCalTableVal(ctypes.c_int(device_id),
-                                                        ctypes.c_int(slot_id),
-                                                        c_table_name, ctypes.c_ubyte(table_row),
+                                                        ctypes.c_int(slot_id), c_table_name,
+                                                        ctypes.c_ubyte(table_row),
                                                         ctypes.c_ubyte(table_column),
                                                         ctypes.byref(c_value))
         self.check_error(error_code, "SEPIA2_SWM_GetCalTableVal")
@@ -2078,6 +2329,19 @@ class PicoquantSepia2Lib:
 
     @handle_errors
     def swm_get_ext_attenuation(self, device_id: int, slot_id: int) -> float:
+        """This function returns the value of an external attenuation of the SWM output as set by
+        the SWM function `swm_set_ext_attenuation`.
+        
+        This function is only used for informational purposes. The GUI software uses this value to
+        provide the user with a close to reality visualisation of the output signals.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SWM module
+
+        Returns:
+            ext_attenuation (float): external attenuation in dB
+        """
         c_ext_attenuation = ctypes.c_float()
 
         error_code = self.dll.SEPIA2_SWM_GetExtAtten(ctypes.c_int(device_id), ctypes.c_int(slot_id),
@@ -2088,12 +2352,35 @@ class PicoquantSepia2Lib:
 
     @handle_errors
     def swm_set_ext_attenuation(self, device_id: int, slot_id: int, ext_attenuation: float) -> None:
+        """This function writes the value of an external attenuation of the SWM output to the
+        module.
+        
+        The GUI software uses this value (as read by the function `swm_get_ext_attenuation`) to
+        provide the user with a close to reality visualisation of the output signals.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SWM module
+            ext_attenuation (float): external attenuation in dB
+        """
         error_code = self.dll.SEPIA2_SWM_SetExtAtten(ctypes.c_int(device_id), ctypes.c_int(slot_id),
                                                      ctypes.c_float(ext_attenuation))
         self.check_error(error_code, "SEPIA2_SWM_SetExtAtten")
 
     @handle_errors
     def vcl_get_ui_constants(self, device_id: int, slot_id: int) -> (int, int, int):
+        """This function returns all necessary values to initialize a GUI for legal VCL temperature
+        adjustment entries.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of VCL module
+
+        Returns:
+            min_temp (int): minimum temperature in tenth of °C
+            max_temp (int): maximum temperature in tenth of °C
+            temp_resolution (int): temperature resolution in tenth of °C
+        """
         c_min_temp = ctypes.c_int()
         c_max_temp = ctypes.c_int()
         c_temp_resolution = ctypes.c_int()
@@ -2109,6 +2396,15 @@ class PicoquantSepia2Lib:
 
     @handle_errors
     def vcl_get_temperature(self, device_id: int, slot_id: int) -> int:
+        """This function returns the current VCL temperature adjustment setting.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of VCL module
+
+        Returns:
+            temperature (int): temperature in tenth of °C
+        """
         c_temperature = ctypes.c_int()
 
         error_code = self.dll.SEPIA2_VCL_GetTemperature(ctypes.c_int(device_id),
@@ -2120,6 +2416,13 @@ class PicoquantSepia2Lib:
 
     @handle_errors
     def vcl_set_temperature(self, device_id: int, slot_id: int, temperature: int) -> None:
+        """This function sets the new VCL temperature adjustment setting.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of VCL module
+            temperature (int): temperature in tenth of °C
+        """
         error_code = self.dll.SEPIA2_VCL_SetTemperature(ctypes.c_int(device_id),
                                                         ctypes.c_int(slot_id),
                                                         ctypes.c_int(temperature))
@@ -2127,6 +2430,17 @@ class PicoquantSepia2Lib:
 
     @handle_errors
     def vcl_get_bias_voltage(self, device_id: int, slot_id: int) -> int:
+        """This function returns the current bias voltage adjustment setting. The function is needed
+        for documentation of the module's calibration parameters in case of a support request,
+        beside this, it is solely informative.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of VCL module
+
+        Returns:
+            bias_voltage (int): bias voltage (0..1000) in per mille of the max. voltage
+        """
         c_bias_voltage = ctypes.c_int()
 
         error_code = self.dll.SEPIA2_VCL_GetBiasVoltage(ctypes.c_int(device_id),
@@ -2137,141 +2451,166 @@ class PicoquantSepia2Lib:
         return c_bias_voltage.value
 
     @handle_errors
-    def spm_decode_module_state(self, state: int) -> str:
-        c_status_text = ctypes.create_string_buffer(79)
+    def ssm_decode_freq_trig_mode(self, device_id: int, slot_id: int, freq_trig_id: int) \
+            -> (str, int, bool):
+        """Returns the frequency / trigger mode properties at the list position given by
+        `freq_trig_id` for a SSM module. The properties to retrieve are:
+            - a string representation of the frequency / trigger mode in `freq_trig_str`,
+            - a numerical representation thereof in `frequency` in Hz (0 means off, -1 means
+              external),
+            - a boolean in `trig_level_enabled`, denoting if the trigger mode needs additional
+              trigger level information.
+        
+        This function only works "on line", with a "Solea" running, because each SSM may carry its
+        individual list of reference sources. To get the whole table, loop over the list position
+        index starting with 0 until the function terminates with an error.
 
-        error_code = self.dll.SEPIA2_SPM_DecodeModuleState(ctypes.c_ushort(state),
-                                                           ctypes.byref(c_status_text))
-        self.check_error(error_code, "SEPIA2_SPM_DecodeModuleState")
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SSM module
+            freq_trig_id (int): index into the list of reference sources (integer, 0..)
 
-        return c_status_text.value.decode(self.str_encoding)
+        Returns:
+            freq_trig_str (str): string representation of the frequency / trigger mode
+            frequency (int): numeric representation of the frequency / trigger mode in Hz (0 = off,
+                -1 = external source)
+            trig_level_enabled (bool): denoting if a trigger level is needed
+        """
+        c_freq_trig_str = ctypes.create_string_buffer(15)
+        c_frequency = ctypes.c_int()
+        c_trig_level_enabled = ctypes.c_byte()
 
-    @handle_errors
-    def spm_get_fw_version(self, device_id: int, slot_id: int) -> (int, int, int):
-        c_fw_version = ctypes.c_ulong()
+        error_code = self.dll.SEPIA2_SSM_DecodeFreqTrigMode(ctypes.c_int(device_id),
+                                                            ctypes.c_int(slot_id),
+                                                            ctypes.c_int(freq_trig_id),
+                                                            ctypes.byref(c_freq_trig_str),
+                                                            ctypes.byref(c_frequency),
+                                                            ctypes.byref(c_trig_level_enabled))
+        self.check_error(error_code, "SEPIA2_SSM_DecodeFreqTrigMode")
 
-        error_code = self.dll.SEPIA2_SPM_GetFWVersion(ctypes.c_int(device_id),
-                                                       ctypes.c_int(slot_id),
-                                                       ctypes.byref(c_fw_version))
-        self.check_error(error_code, "SEPIA2_SPM_GetFWVersion")
-
-        fw_version_bytes = c_fw_version.value.to_bytes(4)
-
-        # major, minor, build
-        return fw_version_bytes[0], fw_version_bytes[1], int.from_bytes(fw_version_bytes[2:])
-
-    @handle_errors
-    def spm_get_sensor_data(self, device_id: int, slot_id: int) \
-            -> (int, int, int, int, int, int, int, int, int):
-        c_sensor_data_array = (ctypes.c_ushort * 9)()
-
-        error_code = self.dll.SEPIA2_SPM_GetSensorData(ctypes.c_int(device_id),
-                                                       ctypes.c_int(slot_id),
-                                                       ctypes.byref(c_sensor_data_array))
-        self.check_error(error_code, "SEPIA2_SPM_GetSensorData")
-
-        # temperatures (6x), overall current, optional sensor 1, optional sensor 2
-        return tuple(c_sensor_data_array)
-
-    @handle_errors
-    def spm_get_temperature_adjust(self, device_id: int, slot_id: int) \
-            -> (int, int, int, int, int, int):
-        c_temperature_array = (ctypes.c_ushort * 6)()
-
-        error_code = self.dll.SEPIA2_SPM_GetTemperatureAdjust(ctypes.c_int(device_id),
-                                                              ctypes.c_int(slot_id),
-                                                              ctypes.byref(c_temperature_array))
-        self.check_error(error_code, "SEPIA2_SPM_GetTemperatureAdjust")
-
-        return tuple(c_temperature_array)
+        return c_freq_trig_str.value.decode(self.str_encoding), c_frequency.value, \
+            bool(c_trig_level_enabled.value)
 
     @handle_errors
-    def spm_get_status_error(self, device_id: int, slot_id: int) -> (PicoquantSepia2SPMStates, int):
-        c_state = ctypes.c_ushort()
-        c_error_code = ctypes.c_short()
+    def ssm_get_trig_level_range(self, device_id: int, slot_id: int) -> (int, int, int):
+        """Retrieves the range and resolution of the trigger level in mV (needed as limits for
+        adjustment controls, e.g. in the GUI)
 
-        error_code = self.dll.SEPIA2_SPM_GetStatusError(ctypes.c_int(device_id),
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SSM module
+
+        Returns:
+            trig_level_upper (int): upper trigger level in mV
+            trig_level_lower (int): lower trigger level in mV
+            trig_level_resolution (int): trigger level resolution in mV
+        """
+        c_trig_level_upper = ctypes.c_int()
+        c_trig_level_lower = ctypes.c_int()
+        c_trig_level_resolution = ctypes.c_int()
+
+        error_code = self.dll.SEPIA2_SSM_GetTrigLevelRange(ctypes.c_int(device_id),
+                                                           ctypes.c_int(slot_id),
+                                                           ctypes.byref(c_trig_level_upper),
+                                                           ctypes.byref(c_trig_level_lower),
+                                                           ctypes.byref(c_trig_level_resolution))
+        self.check_error(error_code, "SEPIA2_SSM_GetTrigLevelRange")
+
+        return c_trig_level_upper.value, c_trig_level_lower.value, c_trig_level_resolution.value
+
+    @handle_errors
+    def ssm_get_trigger_data(self, device_id: int, slot_id: int) -> (int, int):
+        """Returns the current index into the list of reference sources in `freq_trig_id`; This
+        value can be decoded using the function `ssm_decode_freq_trig_mode`. Additionally, it
+        returns the current trigger level in mV, if `freq_trig_id` contains a value representative
+        for external triggering.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SSM module
+
+        Returns:
+            freq_trig_id (int): index into the list of reference sources (0..)
+            trig_level (int): current value of the trigger level in mV
+        """
+        c_freq_trig_id = ctypes.c_int()
+        c_trig_level = ctypes.c_int()
+
+        error_code = self.dll.SEPIA2_SSM_GetTriggerData(ctypes.c_int(device_id),
                                                         ctypes.c_int(slot_id),
-                                                        ctypes.byref(c_state),
-                                                        ctypes.byref(c_error_code))
-        self.check_error(error_code, "SEPIA2_SPM_GetStatusError")
+                                                        ctypes.byref(c_freq_trig_id),
+                                                        ctypes.byref(c_trig_level))
+        self.check_error(error_code, "SEPIA2_SSM_GetTriggerData")
 
-        return PicoquantSepia2SPMStates(c_state.value), c_error_code
+        return c_freq_trig_id.value, c_trig_level.value
 
     @handle_errors
-    def spm_update_firmware(self, device_id: int, slot_id: int, fwr_filename: str) -> None:
-        c_fwr_filename = ctypes.create_string_buffer(fwr_filename)
+    def ssm_set_trigger_data(self, device_id: int, slot_id: int, freq_trig_id: int,
+                             trig_level: int) -> None:
+        """Sets the current index into the list of reference sources in `freq_trig_id`; This value
+        can be decoded using the function `ssm_decode_freq_trig_mode`. Additionally, it sets the
+        current trigger level in mV, if `freq_trig_id` contains a value representative for external
+        triggering.
 
-        error_code = self.dll.SEPIA2_SPM_UpdateFirmware(ctypes.c_int(device_id),
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SSM module
+            freq_trig_id (int): index into the list of reference sources (0..)
+            trig_level (int): current value of the trigger level in mV
+        """
+        error_code = self.dll.SEPIA2_SSM_SetTriggerData(ctypes.c_int(device_id),
                                                         ctypes.c_int(slot_id),
-                                                        c_fwr_filename)
-        self.check_error(error_code, "SEPIA2_SPM_UpdateFirmware")
+                                                        ctypes.c_int(freq_trig_id),
+                                                        ctypes.c_int(trig_level))
+        self.check_error(error_code, "SEPIA2_SSM_SetTriggerData")
 
     @handle_errors
-    def spm_set_fram_write_protect(self, device_id: int, slot_id: int, write_protect: bool) -> None:
-        error_code = self.dll.SEPIA2_SPM_SetFRAMWriteProtect(ctypes.c_int(device_id),
+    def ssm_set_fram_write_protect(self, device_id: int, slot_id: int, write_protect: bool) -> None:
+        """Sets the write protection for the module's FRAM to the desired value. If protection was
+        disabled, the FRAM stays writeable until revoked or next power down. On power up, write
+        protection is set by default.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SSM module
+            write_protect (bool): enable write protection
+        """
+        error_code = self.dll.SEPIA2_SSM_SetFRAMWriteProtect(ctypes.c_int(device_id),
                                                              ctypes.c_int(slot_id),
                                                              ctypes.c_ubyte(write_protect))
-        self.check_error(error_code, "SEPIA2_SPM_SetFRAMWriteProtect")
+        self.check_error(error_code, "SEPIA2_SSM_SetFRAMWriteProtect")
 
     @handle_errors
-    def spm_get_fiber_amplifier_fail(self, device_id: int, slot_id: int) -> bool:
-        c_fiber_amp_fail = ctypes.c_ubyte()
+    def ssm_get_fram_write_protect(self, device_id: int, slot_id: int) -> bool:
+        """Gets the write protection state for the module's FRAM.
 
-        error_code = self.dll.SEPIA2_SPM_GetFiberAmplifierFail(ctypes.c_int(device_id),
-                                                               ctypes.c_int(slot_id),
-                                                               ctypes.byref(c_fiber_amp_fail))
-        self.check_error(error_code, "SEPIA2_SPM_GetFiberAmplifierFail")
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SSM module
 
-        return bool(c_fiber_amp_fail.value)
+        Returns:
+            write_protect (bool): enable write protection
+        """
+        c_write_protect = ctypes.c_ubyte()
 
-    @handle_errors
-    def spm_reset_fiber_amplifier_fail(self, device_id: int, slot_id: int, fiber_amp_fail: bool) \
-            -> None:
-        error_code = self.dll.SEPIA2_SPM_ResetFiberAmplifierFail(ctypes.c_int(device_id),
-                                                                 ctypes.c_int(slot_id),
-                                                                 ctypes.c_ubyte(fiber_amp_fail))
-        self.check_error(error_code, "SEPIA2_SPM_ResetFiberAmplifierFail")
+        error_code = self.dll.SEPIA2_SSM_GetFRAMWriteProtect(ctypes.c_int(device_id),
+                                                             ctypes.c_int(slot_id),
+                                                             ctypes.byref(c_write_protect))
+        self.check_error(error_code, "SEPIA2_SSM_GetFRAMWriteProtect")
 
-    @handle_errors
-    def spm_get_pump_power_state(self, device_id: int, slot_id: int) -> (bool, bool):
-        c_pump_state = ctypes.c_ubyte()
-        c_pump_mode = ctypes.c_ubyte()
-
-        error_code = self.dll.SEPIA2_SPM_GetPumpPowerState(ctypes.c_int(device_id),
-                                                           ctypes.c_int(slot_id),
-                                                           ctypes.byref(c_pump_state),
-                                                           ctypes.byref(c_pump_mode))
-        self.check_error(error_code, "SEPIA2_SPM_GetPumpPowerState")
-
-        return bool(c_pump_state.value), bool(c_pump_mode)
-
-    @handle_errors
-    def spm_set_pump_power_state(self, device_id: int, slot_id: int, pump_state: bool,
-                                 pump_mode: bool) -> None:
-        error_code = self.dll.SEPIA2_SPM_SetPumpPowerState(ctypes.c_int(device_id),
-                                                           ctypes.c_int(slot_id),
-                                                           ctypes.c_ubyte(pump_state),
-                                                           ctypes.c_ubyte(pump_mode))
-        self.check_error(error_code, "SEPIA2_SPM_SetPumpPowerState")
-
-    @handle_errors
-    def spm_get_operation_timers(self, device_id: int, slot_id: int) -> (int, int, int, int):
-        c_main_power_switch = ctypes.c_ulong()
-        c_uptime_overall = ctypes.c_ulong()
-        c_uptime_delivery = ctypes.c_ulong()
-        c_uptime_fiber_change = ctypes.c_ulong()
-
-        error_code = self.dll.SEPIA2_SPM_GetOperationTimers(ctypes.c_int(device_id),
-                                                            ctypes.c_int(slot_id),
-                                                            ctypes.byref(c_main_power_switch),
-                                                            ctypes.byref(c_uptime_overall),
-                                                            ctypes.byref(c_uptime_delivery),
-                                                            ctypes.byref(c_uptime_fiber_change))
-        self.check_error(error_code, "SEPIA2_SPM_GetOperationTimers")
+        return bool(c_write_protect.value)
 
     @handle_errors
     def sws_decode_module_type(self, module_type: int) -> str:
+        """Decodes the SWS type number as retrieved by SWS function `sws_get_module_type` to a
+        string.
+
+        Args:
+            module_type (int): SWS type number (0..255)
+
+        Returns:
+            module_type_str (str): SWS type string
+        """
         c_module_type_str = ctypes.create_string_buffer(32)
 
         error_code = self.dll.SEPIA2_SWS_DecodeModuleType(ctypes.c_int(module_type),
@@ -2281,8 +2620,17 @@ class PicoquantSepia2Lib:
         return c_module_type_str.value.decode(self.str_encoding)
 
     @handle_errors
-    def sws_decode_module_state(self, state: int) -> str:
-        c_state_str = ctypes.create_string_buffer(148)
+    def sws_decode_module_state(self, state: PicoquantSepia2SWSStates) -> str:
+        """Decodes the module state to a string. The module state is a bit-coded word; Each bit may
+        decode to a certain string.
+
+        Args:
+            state (PicoquantSepia2SWSStates): module state (0..65535)
+
+        Returns:
+            state_str (str): module status string
+        """
+        c_state_str = ctypes.create_string_buffer(511)
 
         error_code = self.dll.SEPIA2_SWS_DecodeModuleState(ctypes.c_ushort(state),
                                                            ctypes.byref(c_state_str))
@@ -2292,6 +2640,17 @@ class PicoquantSepia2Lib:
 
     @handle_errors
     def sws_get_module_type(self, device_id: int, slot_id: int) -> int:
+        """There are different SWS module types due to different possible technologies used to
+        select the wavelength. This function returns the code of the currently implemented
+        technology. The SWS type number can be decoded by the SWS function `sws_decode_module_type`.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SWS module
+
+        Returns:
+            module_type (int): SWS type number (0..255)
+        """
         c_module_type = ctypes.c_int()
 
         error_code = self.dll.SEPIA2_SWS_GetModuleType(ctypes.c_int(device_id),
@@ -2303,6 +2662,20 @@ class PicoquantSepia2Lib:
 
     @handle_errors
     def sws_get_status_error(self, device_id: int, slot_id: int) -> (PicoquantSepia2SWSStates, int):
+        """The state is bit coded and can be decoded by the SWS function `sws_decode_module_state`.
+        If the error state bit `HARDWARE_ERROR` (0x10) is set, the `error_code` is transmitted as
+        well, else this variable is zero. As a side effect, error state bit and error code are
+        cleared, if there are no further errors pending. Decode the error codes received with the
+        LIB function `lib_decode_error`.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SWS module
+
+        Returns:
+            state (PicoquantSepia2SWSStates): state of the SWS module
+            error_code (int): error code
+        """
         c_state = ctypes.c_ushort()
         c_error_code = ctypes.c_int()
 
@@ -2317,6 +2690,30 @@ class PicoquantSepia2Lib:
     @handle_errors
     def sws_get_param_ranges(self, device_id: int, slot_id: int) \
             -> (int, int, int, int, int, int, int, int, int, int):
+        """Gets ranges for the parameter values of the wavelength selector: These are the
+        wavelength, the bandwidth and the beam shifter positions.
+        
+        Although there are two independent shifters (one per axis, i.e. x/y), the same range for the
+        both of them is used. Additionally the function returns the wavelength at which (in dynamic
+        power mode) the power state of the pump module should switch from ECO mode to BOOST mode or
+        vice versa in `wavelen_power_mode_toggle`.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SWS module
+
+        Returns:
+            wavelen_upper (int): Upper limit of the wavelength given in pm
+            wavelen_lower (int): Lower limit of the wavelength given in pm
+            wavelen_stepwidth (int): Stepwidth of the wavelength given in pm
+            wavelen_power_mode_toggle (int): Power mode toggle wavelength in pm
+            bandwidth_upper (int): Upper limit of the bandwidth given in pm
+            bandwidth_lower (int): Lower limit of the bandwidth given in pm
+            backwidth_stepwidth (int): Stepwidth of the bandwidth given in pm
+            beam_shifter_upper (int): Upper beam shifter position (+90°) in motor steps
+            beam_shifter_lower (int): Lower beam shifter position ( -90°) in motor steps
+            beam_shifter_stepwidth (int): Stepwidth of the beam shifter pos. in motor steps
+        """
         c_wavelen_upper = ctypes.c_ulong()
         c_wavelen_lower = ctypes.c_ulong()
         c_wavelen_stepwidth = ctypes.c_ulong()
@@ -2327,7 +2724,7 @@ class PicoquantSepia2Lib:
         c_beam_shifter_upper = ctypes.c_int()
         c_beam_shifter_lower = ctypes.c_int()
         c_beam_shifter_stepwidth = ctypes.c_int()
-        
+
         error_code = self.dll.SEPIA2_SWS_GetParamRanges(ctypes.c_int(device_id),
                                                         ctypes.c_int(slot_id),
                                                         ctypes.byref(c_wavelen_upper),
@@ -2349,20 +2746,45 @@ class PicoquantSepia2Lib:
 
     @handle_errors
     def sws_get_parameters(self, device_id: int, slot_id: int) -> (int, int):
-        c_wavelen = ctypes.c_ulong()
+        """Returns the adjusted values of wavelength and bandwidth.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SWS module
+
+        Returns:
+            wavelength (int): current wavelength in pm
+            bandwidth (int): current bandwidth in pm
+        """
+        c_wavelength = ctypes.c_ulong()
         c_bandwidth = ctypes.c_ulong()
 
         error_code = self.dll.SEPIA2_SWS_GetParameters(ctypes.c_int(device_id),
                                                        ctypes.c_int(slot_id),
-                                                       ctypes.byref(c_wavelen),
+                                                       ctypes.byref(c_wavelength),
                                                        ctypes.byref(c_bandwidth))
         self.check_error(error_code, "SEPIA2_SWS_GetParameters")
 
-        return c_wavelen.value, c_bandwidth.value
+        return c_wavelength.value, c_bandwidth.value
 
     @handle_errors
     def sws_set_parameters(self, device_id: int, slot_id: int, wavelength: int, bandwidth: int) \
             -> None:
+        """Sets the values for wavelength and bandwidth.
+        
+        As a side effect, the beam shifter positions are also set to (nearly) optimal values for
+        this very wavelength / bandwidth combination as are defined by an internal calibration
+        table.
+        
+        Refer also to the SWS functions `sws_get_cal_table_size`/`sws_set_cal_table_size`,
+        `sws_get_cal_point_info` and `sws_set_cal_point_values`.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SWS module
+            wavelength (int): current wavelength in pm
+            bandwidth (int): current bandwidth in pm
+        """
         error_code = self.dll.SEPIA2_SWS_SetParameters(ctypes.c_int(device_id),
                                                        ctypes.c_int(slot_id),
                                                        ctypes.c_ulong(wavelength),
@@ -2371,6 +2793,24 @@ class PicoquantSepia2Lib:
 
     @handle_errors
     def sws_get_intensity(self, device_id: int, slot_id: int) -> (int, float):
+        """Gives a measure of the intensity of the beam after it has passed the SWS filters.
+        
+        The function returns two different values: `intensity_raw` contains the read-out of the
+        logarithmic amplifier boosting the photo diode current, while `intensity` gives a linearly
+        equalized calculation thereof. Although the readout of `intensity` is neither equal nor even
+        directly proportional to the absolute optical power of the beam coupled into the fiber, it
+        is, however, a qualified measure for its relative intensity as long as you don't vary the
+        wavelength or bandwidth once set. It then even allows for calibration on the optimal output
+        coupling or for controlled attenuation relative to this optimum by use of the beam shifters.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SWS module
+
+        Returns:
+            intensity_raw (int): raw intensity
+            intensity (float): float intensity
+        """
         c_intensity_raw = ctypes.c_ulong()
         c_intensity = ctypes.c_float()
 
@@ -2384,6 +2824,15 @@ class PicoquantSepia2Lib:
 
     @handle_errors
     def sws_get_fw_version(self, device_id: int, slot_id: int) -> (int, int, int):
+        """Gets the firmware version
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SWS module
+
+        Returns:
+            fw_version (tuple, 3x int): firmware version (major, minor, build)
+        """
         c_fw_version = ctypes.c_ulong()
 
         error_code = self.dll.SEPIA2_SWS_GetFWVersion(ctypes.c_int(device_id),
@@ -2398,6 +2847,14 @@ class PicoquantSepia2Lib:
 
     @handle_errors
     def sws_update_firmware(self, device_id: int, slot_id: int, fwr_filename: str) -> None:
+        """Updates the firmware of the SWS module. The system must be restarted (power down) after
+        updating.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SWS module
+            fwr_filename (str): name of the firmware file
+        """
         c_fwr_filename_str = ctypes.create_string_buffer(fwr_filename)
 
         error_code = self.dll.SEPIA2_SWS_UpdateFirmware(ctypes.c_int(device_id),
@@ -2407,6 +2864,16 @@ class PicoquantSepia2Lib:
 
     @handle_errors
     def sws_set_fram_write_protect(self, device_id: int, slot_id: int, write_protect: bool) -> None:
+        """To write a *.bin file with new DCL-settings to the FRAM, the FRAM write protection must
+        be disabled. For secure reasons it is enabled by default. The write protection state of the
+        FRAM is coded in the module state. The module state can be read out by the SWS function
+        `sws_get_status_error`.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SWS module
+            write_protect (bool): enable/disable write protection
+        """
         error_code = self.dll.SEPIA2_SWS_SetFRAMWriteProtect(ctypes.c_int(device_id),
                                                              ctypes.c_int(slot_id),
                                                              ctypes.c_ubyte(write_protect))
@@ -2414,6 +2881,17 @@ class PicoquantSepia2Lib:
 
     @handle_errors
     def sws_get_beam_pos(self, device_id: int, slot_id: int) -> (int, int):
+        """Returns the current positions of the beam shifters, correcting the vertical as well as
+        the horizontal beam deviation for maximal intensity.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SWS module
+
+        Returns:
+            beam_vpos (int): position of the vertical beam shifter in steps
+            beam_hpos (int): position of the horizontal beam shifter in steps
+        """
         c_beam_vpos = ctypes.c_short()
         c_beam_hpos = ctypes.c_short()
 
@@ -2427,13 +2905,32 @@ class PicoquantSepia2Lib:
     @handle_errors
     def sws_set_beam_pos(self, device_id: int, slot_id: int, beam_vpos: int, beam_hpos: int) \
             -> None:
+        """Sets the new position of the beam shifters, changing the vertical as well as the
+        horizontal beam deviation for maximal intensity.
+        
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SWS module
+            beam_vpos (int): position of the vertical beam shifter in steps
+            beam_hpos (int): position of the horizontal beam shifter in steps
+        """
         error_code = self.dll.SEPIA2_SWS_SetBeamPos(ctypes.c_int(device_id), ctypes.c_int(slot_id),
                                                     ctypes.c_short(beam_vpos),
                                                     ctypes.c_short(beam_hpos))
         self.check_error(error_code, "SEPIA2_SWS_SetBeamPos")
 
     @handle_errors
-    def sws_set_calibration_mode(self, device_id: int, slot_id: int, calibration_mode: bool) -> None:
+    def sws_set_calibration_mode(self, device_id: int, slot_id: int, calibration_mode: bool) \
+            -> None:
+        """To calibrate the SWS module, calibration mode must be enabled. Calibration mode is coded
+        in the module state. The module state can be read out by the SWS function
+        `sws_get_status_error`.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SWS module
+            calibration_mode (bool): enable/disable calibration mode
+        """
         error_code = self.dll.SEPIA2_SWS_SetCalibrationMode(ctypes.c_int(device_id),
                                                             ctypes.c_int(slot_id),
                                                             ctypes.c_ubyte(calibration_mode))
@@ -2441,6 +2938,16 @@ class PicoquantSepia2Lib:
 
     @handle_errors
     def sws_get_cal_table_size(self, device_id: int, slot_id: int) -> (int, int):
+        """Reads out the current calibration table size.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SWS module
+
+        Returns:
+            wavelen_count (int): wavelength index count
+            bandwidth_count (int): bandwidth index count
+        """
         c_wavelen_count = ctypes.c_ushort()
         c_bandwidth_count = ctypes.c_ushort()
 
@@ -2453,11 +2960,27 @@ class PicoquantSepia2Lib:
         return c_wavelen_count.value, c_bandwidth_count.value
 
     @handle_errors
-    def sws_set_cal_table_size(self, device_id: int, slot_id: int, wavelen_count: int,
+    def sws_set_cal_table_size(self, device_id: int, slot_id: int, wavelength_count: int,
                                bandwidth_count: int, init: bool) -> None:
+        """Number of calibration points for the wavelength and bandwidth must be given. If the new
+        calibration table size differs from the current, the calibration table values will always be
+        cleared. With equal size, it depends on the value given with the <bInit> flag, whether the
+        table will be re-initialized (true) or the calibration values will be preserved (false). For
+        robust and near to optimal interpolation of the table values, the function grants for a
+        sufficient size to set. If there aren't enough values to grant for stable interpolations on
+        all of the independent VersaChrome (R) filter sets, the function returns an appropriate
+        error code (-7119). The former table size and its content is then preserved.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SWS module
+            wavelength_count (int): wavelength index count
+            bandwidth_count (int): bandwidth index count
+            init (bool): True: reset calibration table values, False: keep current values
+        """
         error_code = self.dll.SEPIA2_SWS_SetCalTableSize(ctypes.c_int(device_id),
                                                          ctypes.c_int(slot_id),
-                                                         ctypes.c_ushort(wavelen_count),
+                                                         ctypes.c_ushort(wavelength_count),
                                                          ctypes.c_ushort(bandwidth_count),
                                                          ctypes.c_byte(init))
         self.check_error(error_code, "SEPIA2_SWS_SetCalTableSize")
@@ -2465,6 +2988,22 @@ class PicoquantSepia2Lib:
     @handle_errors
     def sws_get_cal_point_info(self, device_id: int, slot_id: int, wavelen_id: int,
                                bandwidth_id: int) -> (int, int, int, int):
+        """Gets the values of the wavelength, bandwidth and the positions of the vertical and
+        horizontal beam shifter for a given calibration point, defined by the wavelength and
+        bandwidth indices in the calibration table.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SWS module
+            wavelength_id (int): wavelength index
+            bandwidth_id (int): bandwidth index
+
+        Returns:
+            wavelength (int): wavelength in pm
+            bandwidth (int): bandwidth in pm
+            beam_vpos (int): position of the vertical beam shifter in steps
+            beam_hpos (int): position of the horizontal beam shifter in steps
+        """
         c_wavelength = ctypes.c_ulong()
         c_bandwidth = ctypes.c_ulong()
         c_beam_vpos = ctypes.c_short()
@@ -2485,6 +3024,17 @@ class PicoquantSepia2Lib:
     @handle_errors
     def sws_set_cal_point_values(self, device_id: int, slot_id: int, wavelen_id: int,
                                  bandwidth_id: int, beam_vpos: int, beam_hpos: int) -> None:
+        """Sets new values of the vertical and horizontal beam shifter positions for the given
+        calibration point, defined by the wavelength and bandwidth indices in the calibration table.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SWS module
+            wavelength_id (int): wavelength index
+            bandwidth_id (int): bandwidth index
+            beam_vpos (int): position of the vertical beam shifter in steps
+            beam_hpos (int): position of the horizontal beam shifter in steps
+        """
         error_code = self.dll.SEPIA2_SWS_SetCalPointValues(ctypes.c_int(device_id),
                                                            ctypes.c_int(slot_id),
                                                            ctypes.c_short(wavelen_id),
@@ -2494,73 +3044,324 @@ class PicoquantSepia2Lib:
         self.check_error(error_code, "SEPIA2_SWS_SetCalPointValues")
 
     @handle_errors
-    def ssm_decode_freq_trig_mode(self, device_id: int, slot_id: int, freq_trig_id: int) -> (str, int, bool):
-        c_freq_trig_str = ctypes.create_string_buffer(15)
-        c_frequency = ctypes.c_int()
-        c_trig_level_enabled = ctypes.c_byte()
+    def spm_decode_module_state(self, state: PicoquantSepia2SPMStates) -> str:
+        """Decodes the module state to a string. The module state is a bit-coded word; Each bit may
+        decode to a certain string.
 
-        error_code = self.dll.SEPIA2_SSM_DecodeFreqTrigMode(ctypes.c_int(device_id),
-                                                            ctypes.c_int(slot_id),
-                                                            ctypes.c_int(freq_trig_id),
-                                                            ctypes.byref(c_freq_trig_str),
-                                                            ctypes.byref(c_frequency),
-                                                            ctypes.byref(c_trig_level_enabled))
-        self.check_error(error_code, "SEPIA2_SSM_DecodeFreqTrigMode")
+        Args:
+            state (PicoquantSepia2SPMStates): module state number
 
-        return c_freq_trig_str.value.decode(self.str_encoding), c_frequency.value, \
-            bool(c_trig_level_enabled.value)
+        Returns:
+            status_text (str): module status string
+        """
+        c_status_text = ctypes.create_string_buffer(511)
+
+        error_code = self.dll.SEPIA2_SPM_DecodeModuleState(ctypes.c_ushort(state),
+                                                           ctypes.byref(c_status_text))
+        self.check_error(error_code, "SEPIA2_SPM_DecodeModuleState")
+
+        return c_status_text.value.decode(self.str_encoding)
 
     @handle_errors
-    def ssm_get_trig_level_range(self, device_id: int, slot_id: int) -> (int, int, int):
-        c_trig_level_upper = ctypes.c_int()
-        c_trig_level_lower = ctypes.c_int()
-        c_trig_level_resolution = ctypes.c_int()
+    def spm_get_status_error(self, device_id: int, slot_id: int) -> (PicoquantSepia2SPMStates, int):
+        """The state is bit coded and can be decoded by the SPM function `spm_decode_module_state`.
+        If the error state bit (HARDWARE_ERROR, 0x10) is set, the error code `error_code` is
+        transmitted as well, else this variable is zero. As a side effect, error state bit and error
+        code are cleared, if there are no further errors pending. Decode the error codes received
+        with the LIB function `lib_decode_error`.
 
-        error_code = self.dll.SEPIA2_SSM_GetTrigLevelRange(ctypes.c_int(device_id),
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SPM module
+
+        Returns:
+            state (PicoquantSepia2SPMStates): state of the SPM module
+            error_code (int): error code
+        """
+        c_state = ctypes.c_ushort()
+        c_error_code = ctypes.c_short()
+
+        error_code = self.dll.SEPIA2_SPM_GetStatusError(ctypes.c_int(device_id),
+                                                        ctypes.c_int(slot_id),
+                                                        ctypes.byref(c_state),
+                                                        ctypes.byref(c_error_code))
+        self.check_error(error_code, "SEPIA2_SPM_GetStatusError")
+
+        return PicoquantSepia2SPMStates(c_state.value), c_error_code
+
+    @handle_errors
+    def spm_get_fw_version(self, device_id: int, slot_id: int) -> (int, int, int):
+        """Gets the firmware version
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SPM module
+
+        Returns:
+            fw_version (tuple, 3x int): firmware version (major, minor, build)
+        """
+        c_fw_version = ctypes.c_ulong()
+
+        error_code = self.dll.SEPIA2_SPM_GetFWVersion(ctypes.c_int(device_id),
+                                                       ctypes.c_int(slot_id),
+                                                       ctypes.byref(c_fw_version))
+        self.check_error(error_code, "SEPIA2_SPM_GetFWVersion")
+
+        fw_version_bytes = c_fw_version.value.to_bytes(4)
+
+        # major, minor, build
+        return fw_version_bytes[0], fw_version_bytes[1], int.from_bytes(fw_version_bytes[2:])
+
+    @handle_errors
+    def spm_get_fiber_amplifier_fail(self, device_id: int, slot_id: int) -> bool:
+        """The value of `fiber_amp_fail` states, whether the fiber amplifier is working OK (False)
+        or a failure was detected (True).
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SPM module
+
+        Returns:
+            fiber_amp_fail (bool): True in case of fiber amplifier failure, False if OK
+        """
+        c_fiber_amp_fail = ctypes.c_ubyte()
+
+        error_code = self.dll.SEPIA2_SPM_GetFiberAmplifierFail(ctypes.c_int(device_id),
+                                                               ctypes.c_int(slot_id),
+                                                               ctypes.byref(c_fiber_amp_fail))
+        self.check_error(error_code, "SEPIA2_SPM_GetFiberAmplifierFail")
+
+        return bool(c_fiber_amp_fail.value)
+
+    @handle_errors
+    def spm_reset_fiber_amplifier_fail(self, device_id: int, slot_id: int, fiber_amp_fail: bool) \
+            -> None:
+        """With this function the value of `fiber_amp_fail` can be reset to 0 (amp OK) after repair.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SPM module
+            fiber_amp_fail (bool): True in case of fiber amplifier failure, False if OK
+        """
+        error_code = self.dll.SEPIA2_SPM_ResetFiberAmplifierFail(ctypes.c_int(device_id),
+                                                                 ctypes.c_int(slot_id),
+                                                                 ctypes.c_ubyte(fiber_amp_fail))
+        self.check_error(error_code, "SEPIA2_SPM_ResetFiberAmplifierFail")
+
+    @handle_errors
+    def spm_get_pump_power_state(self, device_id: int, slot_id: int) -> (bool, bool):
+        """Gets current pump mode and state.
+        
+        If the mode is set to "dynamic", the state is controlled by the firmware, staying as long as
+        appropriate in ECO mode and only changing to BOOST mode, where otherwise the output power
+        would be too low. This mode is recommended to reduce the influence of fiber degradation.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SPM module
+
+        Returns:
+            pump_state (bool): pump state (True = ECO, False = BOOST)
+            pump_mode (bool): pump mode (True = dynamic, False = manual)
+        """
+        c_pump_state = ctypes.c_ubyte()
+        c_pump_mode = ctypes.c_ubyte()
+
+        error_code = self.dll.SEPIA2_SPM_GetPumpPowerState(ctypes.c_int(device_id),
                                                            ctypes.c_int(slot_id),
-                                                           ctypes.byref(c_trig_level_upper),
-                                                           ctypes.byref(c_trig_level_lower),
-                                                           ctypes.byref(c_trig_level_resolution))
-        self.check_error(error_code, "SEPIA2_SSM_GetTrigLevelRange")
+                                                           ctypes.byref(c_pump_state),
+                                                           ctypes.byref(c_pump_mode))
+        self.check_error(error_code, "SEPIA2_SPM_GetPumpPowerState")
 
-        return c_trig_level_upper.value, c_trig_level_lower.value, c_trig_level_resolution.value
-
-    @handle_errors
-    def ssm_get_trigger_data(self, device_id: int, slot_id: int) -> (int, int):
-        c_freq_trig_id = ctypes.c_int()
-        c_trig_level = ctypes.c_int()
-
-        error_code = self.dll.SEPIA2_SSM_GetTriggerData(ctypes.c_int(device_id),
-                                                        ctypes.c_int(slot_id),
-                                                        ctypes.byref(c_freq_trig_id),
-                                                        ctypes.byref(c_trig_level))
-        self.check_error(error_code, "SEPIA2_SSM_GetTriggerData")
-
-        return c_freq_trig_id.value, c_trig_level.value
+        return bool(c_pump_state.value), bool(c_pump_mode)
 
     @handle_errors
-    def ssm_set_trigger_data(self, device_id: int, slot_id: int, freq_trig_id: int,
-                             trig_level: int) -> None:
-        error_code = self.dll.SEPIA2_SSM_SetTriggerData(ctypes.c_int(device_id),
-                                                        ctypes.c_int(slot_id),
-                                                        ctypes.c_int(freq_trig_id),
-                                                        ctypes.c_int(trig_level))
-        self.check_error(error_code, "SEPIA2_SSM_SetTriggerData")
+    def spm_set_pump_power_state(self, device_id: int, slot_id: int, pump_state: bool,
+                                 pump_mode: bool) -> None:
+        """Sets pump mode and state.
+        
+        If the mode is set to "dynamic", the state is controlled by the firmware, staying as long as
+        appropriate in ECO mode and only changing to BOOST mode, where otherwise the output power
+        would be too low. This mode is recommended to reduce the influence of fiber degradation.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SPM module
+            pump_state (bool): pump state (True = ECO, False = BOOST)
+            pump_mode (bool): pump mode (True = dynamic, False = manual)
+        """
+        error_code = self.dll.SEPIA2_SPM_SetPumpPowerState(ctypes.c_int(device_id),
+                                                           ctypes.c_int(slot_id),
+                                                           ctypes.c_ubyte(pump_state),
+                                                           ctypes.c_ubyte(pump_mode))
+        self.check_error(error_code, "SEPIA2_SPM_SetPumpPowerState")
 
     @handle_errors
-    def ssm_set_fram_write_protect(self, device_id: int, slot_id: int, write_protect: bool) -> None:
-        error_code = self.dll.SEPIA2_SSM_SetFRAMWriteProtect(ctypes.c_int(device_id),
+    def spm_get_operation_timers(self, device_id: int, slot_id: int) -> (int, int, int, int):
+        """Gets the operation timers.
+
+        main_power_switch: counts how many times the SPM module was switched on
+        uptime_overall: shows the uptime in seconds
+        uptime_delivery shows the uptime since delivery in seconds
+        uptime_fiber_change shows the uptime since fiber change in seconds
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SPM module
+
+        Returns:
+            main_power_switch (int): main power switched on
+            uptime_overall (int): uptime over all in seconds
+            uptime_delivery (int): uptime since delivery in seconds
+            uptime_fiber_change (int): uptime since fiber change in seconds
+        """
+        c_main_power_switch = ctypes.c_ulong()
+        c_uptime_overall = ctypes.c_ulong()
+        c_uptime_delivery = ctypes.c_ulong()
+        c_uptime_fiber_change = ctypes.c_ulong()
+
+        error_code = self.dll.SEPIA2_SPM_GetOperationTimers(ctypes.c_int(device_id),
+                                                            ctypes.c_int(slot_id),
+                                                            ctypes.byref(c_main_power_switch),
+                                                            ctypes.byref(c_uptime_overall),
+                                                            ctypes.byref(c_uptime_delivery),
+                                                            ctypes.byref(c_uptime_fiber_change))
+        self.check_error(error_code, "SEPIA2_SPM_GetOperationTimers")
+
+    @handle_errors
+    def spm_set_fram_write_protect(self, device_id: int, slot_id: int, write_protect: bool) -> None:
+        """To write a *.bin file with new DCL-settings to the FRAM, the FRAM write protection must
+        be disabled. For secure reasons it is be enabled by default. The write protection state of
+        the FRAM is coded in the module state. The module state can be read out by the SPM function
+        `spm_get_status_error`.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SPM module
+            write_protect (bool): enable/disable write protection
+        """
+        error_code = self.dll.SEPIA2_SPM_SetFRAMWriteProtect(ctypes.c_int(device_id),
                                                              ctypes.c_int(slot_id),
                                                              ctypes.c_ubyte(write_protect))
-        self.check_error(error_code, "SEPIA2_SSM_SetFRAMWriteProtect")
+        self.check_error(error_code, "SEPIA2_SPM_SetFRAMWriteProtect")
 
     @handle_errors
-    def ssm_get_fram_write_protect(self, device_id: int, slot_id: int) -> bool:
-        c_write_protect = ctypes.c_ubyte()
+    def spm_update_firmware(self, device_id: int, slot_id: int, fwr_filename: str) -> None:
+        """Updates the firmware of the SPM module. The system must be restarted (power down) after
+        updating.
 
-        error_code = self.dll.SEPIA2_SSM_GetFRAMWriteProtect(ctypes.c_int(device_id),
-                                                             ctypes.c_int(slot_id),
-                                                             ctypes.byref(c_write_protect))
-        self.check_error(error_code, "SEPIA2_SSM_GetFRAMWriteProtect")
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SPM module
+            fwr_filename (str): firmware file
+        """
+        c_fwr_filename = ctypes.create_string_buffer(fwr_filename)
 
-        return bool(c_write_protect.value)
+        error_code = self.dll.SEPIA2_SPM_UpdateFirmware(ctypes.c_int(device_id),
+                                                        ctypes.c_int(slot_id),
+                                                        c_fwr_filename)
+        self.check_error(error_code, "SEPIA2_SPM_UpdateFirmware")
+
+    @handle_errors
+    def spm_get_sensor_data(self, device_id: int, slot_id: int) \
+            -> (int, int, int, int, int, int, int, int, int):
+        """Gets the current sensor data of all pump control stages.
+
+        `sensor_data_array` is an array, containing the following data:
+            * temperature of pump 1
+            * temperature of pump 2
+            * temperature of pump 3
+            * temperature of pump 4
+            * temperature of the fiber stacker
+            * temperature of an auxiliary control point (reserved)
+            * resulting over all current
+            * auxiliary sensor 1 (reserved)
+            * auxiliary sensor 2 (reserved)
+
+        The temperatures are given as ADC values. Use static utility function
+        `util_calc_temperature_from_adc` to convert them into Celsius values. Sensed currents can be
+        converted with `util_calc_sensed_current_from_adc`
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SPM module
+
+        Returns:
+            sensor_data_array (tupl,e 9x int): temperatures of pump stages and over all current
+        """
+        c_sensor_data_array = (ctypes.c_ushort * 9)()
+
+        error_code = self.dll.SEPIA2_SPM_GetSensorData(ctypes.c_int(device_id),
+                                                       ctypes.c_int(slot_id),
+                                                       ctypes.byref(c_sensor_data_array))
+        self.check_error(error_code, "SEPIA2_SPM_GetSensorData")
+
+        # temperatures (6x), overall current, optional sensor 1, optional sensor 2
+        return tuple(c_sensor_data_array)
+
+    @handle_errors
+    def spm_get_temperature_adjust(self, device_id: int, slot_id: int) \
+            -> (int, int, int, int, int, int):
+        """Gets the temperature control parameters (legal values from 0 to 1023).
+        
+        Structure of the data is the same as for `spm_get_sensor_data`:
+            * temperature of pump 1
+            * temperature of pump 2
+            * temperature of pump 3
+            * temperature of pump 4
+            * temperature of the fiber stacker
+            * temperature of an auxiliary control point (reserved)
+
+        The temperatures are given as ADC values. Use static utility function
+        `util_calc_temperature_from_adc` to convert them into Celsius values.
+
+        Args:
+            device_id (int): PQ Laser Device index (USB channel number, 0..7)
+            slot_id (int): slot number of SPM module
+
+        Returns:
+            temperature_array (tuple, 6x int): params for temperature controlling
+        """
+        c_temperature_array = (ctypes.c_ushort * 6)()
+
+        error_code = self.dll.SEPIA2_SPM_GetTemperatureAdjust(ctypes.c_int(device_id),
+                                                              ctypes.c_int(slot_id),
+                                                              ctypes.byref(c_temperature_array))
+        self.check_error(error_code, "SEPIA2_SPM_GetTemperatureAdjust")
+
+        return tuple(c_temperature_array)
+
+    @staticmethod
+    def util_calc_temperature_from_adc(adc_temp: int) -> float:
+        """Converts a temperature given as ADC value into a degrees Celsius (°C) value.
+        
+        Use this function to calculate temperatures from ADC values returned by
+        `spm_get_sensor_data`.
+
+        From Sepia library doc for SEPIA2_SPM_GetSensorData (`spm_get_sensor_data`).
+
+        Args:
+            adc_temp (int): Temperature as ADC value
+
+        Returns:
+            float: Temperature in degrees Celsius (°C)
+        """
+        ln = math.log(4700 / (10000 * (1.5 * 1024 / (2.5 * adc_temp) - 1)))
+        return 1 / (ln / 3988 + 1 / 298.15) - 273.15
+
+    @staticmethod
+    def util_calc_sensed_current_from_adc(adc_current: int) -> float:
+        """Converts a sensed current given as ADC value into Amperes (A).
+        
+        Use this function to calculate sensed currents from ADC values returned by
+        `spm_get_sensor_data`.
+
+        From Sepia library doc for SEPIA2_SPM_GetSensorData (`spm_get_sensor_data`).
+
+        Args:
+            adc_current (int): Sensed current as ADC value
+
+        Returns:
+            float: Sensed current in Ampere (A)
+        """
+        return adc_current * 25 / 1024
