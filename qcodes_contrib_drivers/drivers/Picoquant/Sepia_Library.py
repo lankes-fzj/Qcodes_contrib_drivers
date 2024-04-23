@@ -133,11 +133,12 @@ class PicoquantSepia2Lib:
         return bool(c_is_running_on_wine.value)
 
     @handle_errors
-    def usb_open_device(self, device_id: int, product_model: str = None, serial_num: str = None) \
-            -> (str, str):
+    def usb_open_device(self, device_id: int, product_model: str = None, serial_num: str = None,
+                        ignore_blocked_busy: bool = False) -> (str, str):
         """On success, this function grants exclusive access to the PQ Laser Device on USB channel
-        `device_id`. It returns the product model and serial number of the device, even if the
-        device is blocked or busy (error code -9004 or -9005; refer to appendix 4.2).
+        `device_id`. It returns the product model and serial number of the device; if
+        `ignore_blocked_busy` is True, even in case of the device being blocked or busy (error code
+        -9004 or -9005; refer to appendix 4.2).
         
         If called with non-empty string arguments, the respective string works as condition. If you
         pass a product model string, e.g. "Sepia II" or "Solea", all devices other than the
@@ -160,24 +161,27 @@ class PicoquantSepia2Lib:
         error_code = self.dll.SEPIA2_USB_OpenDevice(ctypes.c_int(device_id),
                                                     ctypes.byref(c_product_model),
                                                     ctypes.byref(c_serial_num))
-        self.check_error(error_code, "SEPIA2_USB_OpenDevice")
+        if not ignore_blocked_busy or error_code not in (-9004, -9005):
+            self.check_error(error_code, "SEPIA2_USB_OpenDevice")
 
         return c_product_model.value.decode(self.str_encoding), \
             c_serial_num.value.decode(self.str_encoding)
 
     @handle_errors
     def usb_open_get_ser_num_and_close(self, device_id: int, product_model: str = None,
-                                       serial_num: str = None) -> (str, str):
-        """When called with empty string parameters given, this function is used to iteratively get
-        a complete list of all currently present PQ Laser Devices.
+                                       serial_num: str = None, ignore_blocked_busy: bool = False) \
+                                           -> (str, str):
+        """The function opens the PQ Laser Device on USB channel `device_id` nonexclusively, reads the
+        product model and serial number and immediately closes the device again.
         
-        It returns the product model and serial number of the device, even if the device is blocked
-        or busy (error code -9004 or -9005; refer to appendix 4.2). The function opens the PQ Laser
-        Device on USB channel `device_id` nonexclusively, reads the product model and serial number
-        and immediately closes the device again.
+        It returns the product model and serial number of the device; if `ignore_blocked_busy` is
+        True, even in case of the device being blocked or busy (error code -9004 or -9005; refer to
+        appendix 4.2)..
         
-        When called with non-empty string parameters, with respect to the conditions, the function
-        behaves as specified for the `usb_open_device` function.
+        When called with empty string parameters given, this function is used to iteratively get
+        a complete list of all currently present PQ Laser Devices. When called with non-empty string
+        parameters, with respect to the conditions, the function behaves as specified for the
+        `usb_open_device` function.
 
         Args:
             device_id (int): PQ Laser Device index (USB channel number, 0..7)
@@ -194,7 +198,8 @@ class PicoquantSepia2Lib:
         error_code = self.dll.SEPIA2_USB_OpenGetSerNumAndClose(ctypes.c_int(device_id),
                                                                ctypes.byref(c_product_model),
                                                                ctypes.byref(c_serial_num))
-        self.check_error(error_code, "SEPIA2_USB_OpenGetSerNumAndClose")
+        if not ignore_blocked_busy or error_code not in (-9004, -9005):
+            self.check_error(error_code, "SEPIA2_USB_OpenGetSerNumAndClose")
 
         return c_product_model.value.decode(self.str_encoding), \
             c_serial_num.value.decode(self.str_encoding)

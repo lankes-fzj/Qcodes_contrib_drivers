@@ -1,11 +1,16 @@
 import enum
 
-__all__ = ["PicoquantSepia2LibError", "handle_errors", "PicoquantSepia2WorkingMode",
-           "PicoquantSepia2SupportRequestOptions", "PicoquantSepia2Preset",
-           "PicoquantSepia2SOMDState", "PicoquantSepia2SPMStates", "PicoquantSepia2SWSStates"]
+__all__ = ["PicoquantSepia2Error", "PicoquantSepia2LibError", "handle_errors",
+           "PicoquantSepia2WorkingMode", "PicoquantSepia2SupportRequestOptions",
+           "PicoquantSepia2Preset", "PicoquantSepia2SOMDState", "PicoquantSepia2SPMStates",
+           "PicoquantSepia2SWSStates"]
 
 
-class PicoquantSepia2LibError(Exception):
+class PicoquantSepia2Error(Exception):
+    pass
+
+
+class PicoquantSepia2LibError(PicoquantSepia2Error):
     """Exceptions occurring in `PicoquantSepia2Lib`.
     
     Args:
