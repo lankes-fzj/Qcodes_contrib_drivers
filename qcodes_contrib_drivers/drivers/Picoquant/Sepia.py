@@ -5,7 +5,7 @@ import qcodes as qc
 from .Sepia_Library import PicoquantSepia2Lib, PicoquantSepia2LibError
 
 
-class PicoquantSepia2Module(qc.instrument.InstrumentModule):
+class PicoquantSepia2Module(qc.instrument.InstrumentChannel):
     def __init__(self, parent: "PicoquantSepia2", name: str, slot_id: int, is_primary: bool = True):
         super().__init__(parent, name)
 
