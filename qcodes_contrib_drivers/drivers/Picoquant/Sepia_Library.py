@@ -1096,8 +1096,8 @@ class PicoquantSepia2Lib:
         Raises:
             ValueError: If len(`burst_lengths`) != 8
         """
-        if (array_len := len(burst_lengths)) != 8:
-            raise ValueError(f"Invalid array size ({array_len}). Expected 8 channels.")
+        if len(burst_lengths) != 8:
+            raise ValueError(f"Invalid array size ({len(burst_lengths)}). Expected 8 channels.")
 
         error_code = self.dll.SEPIA2_SOM_SetBurstLengthArray(ctypes.c_int(device_id),
                                                              ctypes.c_int(slot_id),
@@ -1153,12 +1153,12 @@ class PicoquantSepia2Lib:
         Raises:
             ValueError: If len(`out_enable_list`) or len (`sync_enable_list`) != 8
         """
-        if (array_len := len(out_enable_list)) != 8:
-            raise ValueError(f"Invalid array size ({array_len}) of out_enable_list. Expected 8 " +
-                             "channels.")
-        if (array_len := len(sync_enable_list)) != 8:
-            raise ValueError(f"Invalid array size ({array_len}) of sync_enable_list. Expected 8 " +
-                             "channels.")
+        if len(out_enable_list) != 8:
+            raise ValueError(f"Invalid array size ({len(out_enable_list)}) of out_enable_list. " +
+                             "Expected 8 channels.")
+        if len(sync_enable_list) != 8:
+            raise ValueError(f"Invalid array size ({len(sync_enable_list)}) of sync_enable_list. " +
+                             "Expected 8 channels.")
 
         out_enable = int("".join("1" if b else "0" for b in out_enable_list), 2)
         sync_enable = int("".join("1" if b else "0" for b in sync_enable_list), 2)
@@ -1464,8 +1464,8 @@ class PicoquantSepia2Lib:
         Raises:
             ValueError: If len(`burst_lengths`) != 8
         """
-        if (array_len := len(burst_lengths)) != 8:
-            raise ValueError(f"Invalid array size ({array_len}). Expected 8 channels.")
+        if len(burst_lengths) != 8:
+            raise ValueError(f"Invalid array size ({len(burst_lengths)}). Expected 8 channels.")
 
         error_code = self.dll.SEPIA2_SOMD_SetBurstLengthArray(ctypes.c_int(device_id),
                                                               ctypes.c_int(slot_id),
@@ -1521,12 +1521,12 @@ class PicoquantSepia2Lib:
         Raises:
             ValueError: If len(`out_enable_list`) or len (`sync_enable_list`) != 8
         """
-        if (array_len := len(out_enable_list)) != 8:
-            raise ValueError(f"Invalid array size ({array_len}) of out_enable_list. Expected 8 " +
-                             "channels.")
-        if (array_len := len(sync_enable_list)) != 8:
-            raise ValueError(f"Invalid array size ({array_len}) of sync_enable_list. Expected 8 " +
-                             "channels.")
+        if len(out_enable_list) != 8:
+            raise ValueError(f"Invalid array size ({len(out_enable_list)}) of out_enable_list. " +
+                             "Expected 8 channels.")
+        if len(sync_enable_list) != 8:
+            raise ValueError(f"Invalid array size ({len(sync_enable_list)}) of sync_enable_list. " +
+                             "Expected 8 channels.")
 
         out_enable = int("".join("1" if b else "0" for b in out_enable_list), 2)
         sync_enable = int("".join("1" if b else "0" for b in sync_enable_list), 2)
