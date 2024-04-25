@@ -43,7 +43,14 @@ class PicoquantSepia2SLMModule(PicoquantSepia2Module):
     def __init__(self, parent: "PicoquantSepia2", name: str, slot_id: int, is_primary: bool = True):
         super().__init__(parent, name, slot_id, is_primary)
 
-        freq_modes = {self._lib.slm_decode_freq_trig_mode(i): i for i in range(8)}
+        freq_modes = {'80MHz': 0,
+                      '40MHz': 1,
+                      '20MHz': 2,
+                      '10MHz': 3,
+                      '5MHz': 4,
+                      '2.5MHz': 5,
+                      'rising edge': 6,
+                      'falling edge': 7}
 
         self.add_parameter("power",
                            label="Power intensity",
