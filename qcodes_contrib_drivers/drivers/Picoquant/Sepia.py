@@ -1,4 +1,5 @@
 import functools as ft
+import typing as tp
 
 import qcodes as qc
 
@@ -19,6 +20,65 @@ class PicoquantSepia2Module(qc.instrument.InstrumentChannel):
             self._lib.com_get_serial_number(self._device_id, self._slot_id, self._is_primary)
         self._label, self._release_date, self._revision, self._memo = \
             self._lib.com_get_supplementary_infos(self._device_id, self._slot_id, self._is_primary)
+
+
+class PicoquantSepia2SCMModule(PicoquantSepia2Module):
+    def __init__(self, parent: "PicoquantSepia2", name: str, slot_id: int, is_primary: bool = True):
+        super().__init__(parent, name, slot_id, is_primary)
+
+        self.add_parameter("lock",
+                           get_cmd=ft.partial(self._lib.scm_get_laser_soft_lock,
+                                              self._device_id, self._slot_id),
+                           set_cmd=ft.partial(self._lib.scm_set_laser_soft_lock,
+                                              self._device_id, self._slot_id),
+                           vals=qc.validators.Bool())
+        self.add_parameter("soft_lock",
+                           get_cmd=ft.partial(self._lib.scm_get_laser_locked,
+                                              self._device_id, self._slot_id),
+                           set_cmd=False,
+                           vals=qc.validators.Bool())
+
+
+class PicoquantSepia2SLMModule(PicoquantSepia2Module):
+    def __init__(self, parent: "PicoquantSepia2", name: str, slot_id: int, is_primary: bool = True):
+        super().__init__(parent, name, slot_id, is_primary)
+
+        freq_modes = {self._lib.slm_decode_freq_trig_mode(i): i for i in range(8)}
+
+        self.add_parameter("power",
+                           label="Power intensity",
+                           unit="%",
+                           get_cmd=ft.partial(self._lib.slm_get_intensity_fine_step,
+                                              self._device_id, self._slot_id),
+                           set_cmd=ft.partial(self._lib.slm_set_intensity_fine_step,
+                                              self._device_id, self._slot_id),
+                           vals=qc.validators.Numbers(0, 100),
+                           get_parser=lambda raw: raw / 10,
+                           set_parser=lambda val: int(val * 10))
+        self.add_parameter("freq",
+                           label="Frequency mode",
+                           get_cmd=ft.partial(self._lib.slm_get_pulse_parameters,
+                                              self._lib._device_id, self._slot_id),
+                           set_cmd=self._set_freq,
+                           get_parser=lambda raw: raw[0],
+                           val_mapping=freq_modes,
+                           vals=qc.validators.Ints(0, 7))
+        self.add_parameter("mode",
+                           label="Pulse mode",
+                           get_cmd=ft.partial(self._lib.slm_get_pulse_parameters,
+                                              self._lib._device_id, self._slot_id),
+                           set_cmd=self._set_pulse_mode,
+                           get_parser=lambda raw: raw[1],
+                           val_mapping={"cw": True, "pulsed": False},
+                           vals=qc.validators.Bool())
+
+    def _set_freq(self, freq: int) -> None:
+        _, pulse_mode, _ = self._lib.slm_get_pulse_parameters(self._device_id, self._slot_id)
+        self._lib.slm_set_pulse_parameters(self._device_id, self._slot_id, freq, pulse_mode)
+
+    def _set_pulse_mode(self, pulse_mode: bool) -> None:
+        freq, _, _ = self._lib.slm_get_pulse_parameters(self._device_id, self._slot_id)
+        self._lib.slm_set_pulse_parameters(self._device_id, self._slot_id, freq, pulse_mode)
 
 
 class PicoquantSepia2(qc.Instrument):
@@ -52,7 +112,7 @@ class PicoquantSepia2(qc.Instrument):
         # Print connect message
         self.connect_message()
 
-    def get_idn(self) -> dict[str, str]:
+    def get_idn(self) -> tp.Dict[str, str]:
         return {"vendor": "PicoQuant", "model": self._product_model,
                 "serial": self._serial_num, "firmware": self._fw_version}
 
@@ -60,17 +120,21 @@ class PicoquantSepia2(qc.Instrument):
         self._lib.usb_close_device(self._device_id)
         super().close()
 
-    def _init_modules(self, perform_restart: bool = False) -> list[PicoquantSepia2Module]:
+    def _init_modules(self, perform_restart: bool = False) -> tp.List[PicoquantSepia2Module]:
         modules = []
         module_count = self._lib.fwr_get_module_map(self._device_id, perform_restart)
 
         try:
+            slots = set()
+
             # Iterate through modules
             for i in range(module_count):
-                slot_id, prim, _, _ = self._lib.fwr_get_module_info_by_map_id(self._device_id, i)
+                slot_id, _, _, _ = self._lib.fwr_get_module_info_by_map_id(self._device_id, i)
+                slots.add(slot_id)
 
+            for slot_id in slots:
                 # Get module type and name
-                mod_type = self._lib.com_get_module_type(self._device_id, slot_id, prim)
+                mod_type = self._lib.com_get_module_type(self._device_id, slot_id, True)
                 mod_type_name = self._lib.com_decode_module_type(mod_type)
                 mod_type_abbr = self._lib.com_decode_module_type_abbr(mod_type)
 
@@ -82,8 +146,9 @@ class PicoquantSepia2(qc.Instrument):
             self._lib.fwr_free_module_map(self._device_id)
 
         # Add channel list
-        self.add_submodule("modules", qc.ChannelTuple(self, "modules", PicoquantSepia2Module,
-                                                      self._modules))
+        ch_tuple = qc.instrument.ChannelTuple(self, "modules", PicoquantSepia2Module, self._modules)
+        self.add_submodule("modules", ch_tuple)
+
         return modules
 
     @staticmethod
