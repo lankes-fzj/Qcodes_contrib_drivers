@@ -1,4 +1,5 @@
 import ctypes
+import _ctypes
 import datetime
 import math
 import typing
@@ -29,6 +30,10 @@ class PicoquantSepia2Lib:
     def __init__(self, dll_path: str = None, str_encoding: str = None):
         self.dll = ctypes.CDLL(dll_path or self._DEFAULT_DLL_PATH)
         self.str_encoding = str_encoding or self._DEFAULT_STR_ENCODING
+
+    def __del__(self):
+        """Unload library"""
+        _ctypes.FreeLibrary(self._lib._handle)
 
     def check_error(self, exit_code: int, function_name: str = None) -> None:
         """Checks a function's return code to see if it succeeded.
