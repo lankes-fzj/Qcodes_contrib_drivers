@@ -23,34 +23,34 @@ class PicoquantSepia2Module(qc.instrument.InstrumentChannel):
 
 
 class PicoquantSepia2SCMModule(PicoquantSepia2Module):
-    def __init__(self, parent: "PicoquantSepia2", name: str, slot_id: int, is_primary: bool = True):
+    def __init__(self, parent: "PicoquantSepia2", name: str, slot_id: int, is_primary: bool = True,
+                 disable_soft_lock: bool = True):
         super().__init__(parent, name, slot_id, is_primary)
 
         self.add_parameter("lock",
+                           label="Hard lock",
+                           get_cmd=ft.partial(self._lib.scm_get_laser_locked,
+                                              self._device_id, self._slot_id),
+                           set_cmd=False,
+                           vals=qc.validators.Bool())
+        self.add_parameter("soft_lock",
+                           label="Soft lock register",
                            get_cmd=ft.partial(self._lib.scm_get_laser_soft_lock,
                                               self._device_id, self._slot_id),
                            set_cmd=ft.partial(self._lib.scm_set_laser_soft_lock,
                                               self._device_id, self._slot_id),
                            vals=qc.validators.Bool())
-        self.add_parameter("soft_lock",
-                           get_cmd=ft.partial(self._lib.scm_get_laser_locked,
-                                              self._device_id, self._slot_id),
-                           set_cmd=False,
-                           vals=qc.validators.Bool())
+
+        if disable_soft_lock and self.soft_lock():
+            # Disable soft lock
+            self.soft_lock(False)
 
 
 class PicoquantSepia2SLMModule(PicoquantSepia2Module):
     def __init__(self, parent: "PicoquantSepia2", name: str, slot_id: int, is_primary: bool = True):
         super().__init__(parent, name, slot_id, is_primary)
 
-        freq_modes = {'80MHz': 0,
-                      '40MHz': 1,
-                      '20MHz': 2,
-                      '10MHz': 3,
-                      '5MHz': 4,
-                      '2.5MHz': 5,
-                      'rising edge': 6,
-                      'falling edge': 7}
+        freq_modes = 
 
         self.add_parameter("power",
                            label="Power intensity",
@@ -68,7 +68,14 @@ class PicoquantSepia2SLMModule(PicoquantSepia2Module):
                                               self._lib._device_id, self._slot_id),
                            set_cmd=self._set_freq,
                            get_parser=lambda raw: raw[0],
-                           val_mapping=freq_modes,
+                           val_mapping={"80MHz": 0,
+                                        "40MHz": 1,
+                                        "20MHz": 2,
+                                        "10MHz": 3,
+                                        "5MHz": 4,
+                                        "2.5MHz": 5,
+                                        "rising edge": 6,
+                                        "falling edge": 7},
                            vals=qc.validators.Ints(0, 7))
         self.add_parameter("mode",
                            label="Pulse mode",
@@ -146,7 +153,13 @@ class PicoquantSepia2(qc.Instrument):
                 mod_type_abbr = self._lib.com_decode_module_type_abbr(mod_type)
 
                 # Create module
-                mod = PicoquantSepia2Module(self, mod_type_name, slot_id)
+                if mod_type_abbr == "SCM":
+                    mod = PicoquantSepia2SCMModule(self, mod_type_name, slot_id)
+                elif mod_type_abbr == "SLM":
+                    mod = PicoquantSepia2SLMModule(self, mod_type_name, slot_id)
+                else:
+                    mod = PicoquantSepia2Module(self, mod_type_name, slot_id)
+                
                 modules.append(mod)
                 self.add_submodule(mod_type_abbr, mod)
         finally:
