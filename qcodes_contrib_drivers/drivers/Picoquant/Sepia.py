@@ -56,18 +56,22 @@ class PicoquantSepia2SCMModule(PicoquantSepia2Module):
         super().__init__(parent, name, slot_id, is_primary)
 
         self.add_parameter("lock",
-                           label="Hard lock",
+                           label="Lock state of laser power line",
                            get_cmd=ft.partial(self._lib.scm_get_laser_locked,
                                               self._device_id, self._slot_id),
                            set_cmd=False,
-                           vals=qc.validators.Bool())
+                           vals=qc.validators.Bool(),
+                           docstring="State of the laser power line. Indicates if the laser is " +
+                                     "down either by hardlock, softlock or power failure.")
         self.add_parameter("soft_lock",
                            label="Soft lock register",
                            get_cmd=ft.partial(self._lib.scm_get_laser_soft_lock,
                                               self._device_id, self._slot_id),
                            set_cmd=ft.partial(self._lib.scm_set_laser_soft_lock,
                                               self._device_id, self._slot_id),
-                           vals=qc.validators.Bool())
+                           vals=qc.validators.Bool(),
+                           docstring="Content of soft lock register. To get the real lock-state " +
+                                     "the laser, user parameter `lock` instead.")
 
         if disable_soft_lock and self.soft_lock():
             # Disable soft lock
@@ -100,7 +104,8 @@ class PicoquantSepia2SLMModule(PicoquantSepia2Module):
                                               self._device_id, self._slot_id),
                            vals=qc.validators.Numbers(0, 100),
                            get_parser=lambda raw: raw / 10,
-                           set_parser=lambda val: int(val * 10))
+                           set_parser=lambda val: int(val * 10),
+                           docstring="Power intensity in percent of the controlling voltage")
         self.add_parameter("freq",
                            label="Frequency mode",
                            get_cmd=ft.partial(self._lib.slm_get_pulse_parameters,
@@ -115,15 +120,19 @@ class PicoquantSepia2SLMModule(PicoquantSepia2Module):
                                         "2.5MHz": 5,
                                         "rising edge": 6,
                                         "falling edge": 7},
-                           vals=qc.validators.Ints(0, 7))
+                           vals=qc.validators.Ints(0, 7),
+                           docstring="Index to the list of internal frequencies or external " +
+                                     "trigger modi.")
         self.add_parameter("mode",
                            label="Pulse mode",
                            get_cmd=ft.partial(self._lib.slm_get_pulse_parameters,
                                               self._lib._device_id, self._slot_id),
                            set_cmd=self._set_pulse_mode,
                            get_parser=lambda raw: raw[1],
-                           val_mapping={"cw": True, "pulsed": False},
-                           vals=qc.validators.Bool())
+                           val_mapping={"pulsed": True, "cw": False},
+                           vals=qc.validators.Bool(),
+                           docstring="Pulse mode, standing for either 'pulses enabled' (True / " +
+                                     "\"pulsed\") or 'continuous wave' (False / \"cw\").")
 
     def _set_freq(self, freq: int) -> None:
         _, pulse_mode, _ = self._lib.slm_get_pulse_parameters(self._device_id, self._slot_id)
