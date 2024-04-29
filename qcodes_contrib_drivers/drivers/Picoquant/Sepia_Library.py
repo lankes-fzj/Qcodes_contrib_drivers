@@ -109,21 +109,18 @@ class PicoquantSepia2Lib:
 
     @handle_errors
     def lib_get_version(self) -> (int, int, int, int):
-        """This function returns the current library version string. To be aware of version changing
+        """This function returns the current library version. To be aware of version changing
         trouble, you should call this function and check the version string in your programs, too.
         
-        The format of the version string is: <MajorVersion:1>.<MinorVersion:1>.<Target:2>.<Build>
-        where <Target> identifies the word width of the CPU, the library was compiled for.
+        The format of the version is: (major version, minor version, target, build) where `target`
+        identifies the word width of the CPU, the library was compiled for.
         
-        A legal version string could read e.g. "1.1.32.393", which stands for the software version
-        1.1, compiled for an x86 target architecture and coming as build 393, whilst "1.1.64.393"
+        A legal version could read e.g. "1.1.32.393", which stands for the software version 1.1,
+        compiled for an x86 target architecture and coming as build 393, whilst "1.1.64.393"
         identifies the same software version, but compiled for a x64 target.
         
-        Take care that at least the first three parts of the version string comply with the expected
-        reference, thus check for compliance of the first 7 characters.
-        
         Returns:
-            str: library version string
+            tuple (4x int): Library version (major, minor, target, build)
         """
         c_version_string = ctypes.create_string_buffer(12)
 
@@ -131,7 +128,7 @@ class PicoquantSepia2Lib:
         self.check_error(error_code, "SEPIA2_LIB_GetVersion")
 
         version_str = c_version_string.value.decode(self.str_encoding)
-        
+
         return tuple(int(v) for v in version_str.split("."))
 
     @handle_errors
@@ -188,8 +185,8 @@ class PicoquantSepia2Lib:
     def usb_open_get_ser_num_and_close(self, device_id: int, product_model: str = None,
                                        serial_num: str = None, ignore_blocked_busy: bool = False) \
                                            -> (str, str):
-        """The function opens the PQ Laser Device on USB channel `device_id` nonexclusively, reads the
-        product model and serial number and immediately closes the device again.
+        """The function opens the PQ Laser Device on USB channel `device_id` nonexclusively, reads
+        the product model and serial number and immediately closes the device again.
         
         It returns the product model and serial number of the device; if `ignore_blocked_busy` is
         True, even in case of the device being blocked or busy (error code -9004 or -9005; refer to
