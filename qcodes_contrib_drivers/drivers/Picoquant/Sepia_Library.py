@@ -33,7 +33,8 @@ class PicoquantSepia2Lib:
 
     def __del__(self):
         """Unload library"""
-        _ctypes.FreeLibrary(self._lib._handle)
+        _ctypes.FreeLibrary(self.dll._handle)
+        self.dll = None
 
     def check_error(self, exit_code: int, function_name: str = None) -> None:
         """Checks a function's return code to see if it succeeded.
