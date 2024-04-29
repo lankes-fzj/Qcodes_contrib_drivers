@@ -1,5 +1,6 @@
 import functools as ft
 import typing as tp
+import math
 
 import qcodes as qc
 
@@ -106,7 +107,7 @@ class PicoquantSepia2SLMModule(PicoquantSepia2Module):
                            get_parser=lambda raw: raw / 10,
                            set_parser=lambda val: int(val * 10),
                            docstring="Power intensity in percent of the controlling voltage")
-        self.add_parameter("freq",
+        self.add_parameter("freq_mode",
                            label="Frequency mode",
                            get_cmd=ft.partial(self._lib.slm_get_pulse_parameters,
                                               self._lib._device_id, self._slot_id),
@@ -123,6 +124,24 @@ class PicoquantSepia2SLMModule(PicoquantSepia2Module):
                            vals=qc.validators.Ints(0, 7),
                            docstring="Index to the list of internal frequencies or external " +
                                      "trigger modi.")
+        self.add_parameter("freq",
+                           label="Frequency",
+                           unit="MHz",
+                           get_cmd=ft.partial(self._lib.slm_get_pulse_parameters,
+                                               self._lib._device_id, self._slot_id),
+                           set_cmd=self._set_freq,
+                           get_parser=lambda raw: raw[0],
+                           val_mapping={80: 0,  # 80 MHz
+                                        40: 1,  # 40 MHz
+                                        20: 2,  # 20 MHz
+                                        10: 3,  # 10 MHz
+                                        5: 4,  # 5 MHz
+                                        2.5: 5,  # 2.5 MHz
+                                        math.inf: 6,  # rising edge
+                                        -math.inf: 7},  # falling edge
+                           vals=qc.validators.Ints(0, 7),
+                           docstring="Frequency in MHz. Or +/- infinity for rising/falling edge " +
+                                     "trigger mode")
         self.add_parameter("mode",
                            label="Pulse mode",
                            get_cmd=ft.partial(self._lib.slm_get_pulse_parameters,
