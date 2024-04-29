@@ -27,9 +27,18 @@ class PicoquantSepia2Lib:
     _DEFAULT_DLL_PATH = r"C:\Program Files\Picoquant\GenericLaserDriver\Sepia2_Lib.dll"
     _DEFAULT_STR_ENCODING = "utf-8"
 
-    def __init__(self, dll_path: str = None, str_encoding: str = None):
+    def __init__(self, dll_path: str = None, str_encoding: str = None, check_version: bool = True):
         self.dll = ctypes.CDLL(dll_path or self._DEFAULT_DLL_PATH)
         self.str_encoding = str_encoding or self._DEFAULT_STR_ENCODING
+
+        # Check library version
+        if check_version:
+            major, minor, target, build = self.lib_get_version()
+            if major != 1 or minor != 1 or build <= 457:
+                # Library version is incompatible with this driver
+                version_str = f"{major}.{minor}.{target}.{build}"
+                raise PicoquantSepia2LibError(None, f"Incompatible library version {version_str}." +
+                                              " Expected 1.1.[target].[build > 457]")
 
     def __del__(self):
         """Unload library"""
@@ -99,7 +108,7 @@ class PicoquantSepia2Lib:
                                           "SEPIA2_LIB_DecodeError")
 
     @handle_errors
-    def lib_get_version(self) -> str:
+    def lib_get_version(self) -> (int, int, int, int):
         """This function returns the current library version string. To be aware of version changing
         trouble, you should call this function and check the version string in your programs, too.
         
@@ -121,7 +130,9 @@ class PicoquantSepia2Lib:
         error_code = self.dll.SEPIA2_LIB_GetVersion(c_version_string)
         self.check_error(error_code, "SEPIA2_LIB_GetVersion")
 
-        return c_version_string.value.decode(self.str_encoding)
+        version_str = c_version_string.value.decode(self.str_encoding)
+        
+        return tuple(int(v) for v in version_str.split("."))
 
     @handle_errors
     def lib_is_running_on_wine(self) -> bool:
