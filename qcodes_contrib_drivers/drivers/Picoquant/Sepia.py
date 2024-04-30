@@ -238,6 +238,7 @@ class PicoquantSepia2(qc.Instrument):
 
     def close(self) -> None:
         """Close instrument connection and unload library"""
+        self._lib.fwr_free_module_map(self._device_id)
         self._lib.usb_close_device(self._device_id)
         super().close()
 
@@ -255,37 +256,33 @@ class PicoquantSepia2(qc.Instrument):
         # Get module list
         module_count = self._lib.fwr_get_module_map(self._device_id, perform_restart)
 
-        try:
-            slots = set()
+        slots = set()
+        # Iterate through modules
+        for i in range(module_count):
+            slot_id, _, _, _ = self._lib.fwr_get_module_info_by_map_id(self._device_id, i)
+            slots.add(slot_id)
 
-            # Iterate through modules
-            for i in range(module_count):
-                slot_id, _, _, _ = self._lib.fwr_get_module_info_by_map_id(self._device_id, i)
-                slots.add(slot_id)
+        for slot_id in slots:
+            # Get module type and name
+            mod_type = self._lib.com_get_module_type(self._device_id, slot_id, True)
+            mod_type_name = self._lib.com_decode_module_type(mod_type)
+            mod_type_abbr = self._lib.com_decode_module_type_abbr(mod_type)
 
-            for slot_id in slots:
-                # Get module type and name
-                mod_type = self._lib.com_get_module_type(self._device_id, slot_id, True)
-                mod_type_name = self._lib.com_decode_module_type(mod_type)
-                mod_type_abbr = self._lib.com_decode_module_type_abbr(mod_type)
+            # Create module
+            if mod_type_abbr == "SCM":
+                mod = PicoquantSepia2SCMModule(self, mod_type_name, slot_id)
+            elif mod_type_abbr == "SLM":
+                mod = PicoquantSepia2SLMModule(self, mod_type_name, slot_id)
+            else:
+                # Add unknown module type as common module
+                mod = PicoquantSepia2Module(self, mod_type_name, slot_id)
 
-                # Create module
-                if mod_type_abbr == "SCM":
-                    mod = PicoquantSepia2SCMModule(self, mod_type_name, slot_id)
-                elif mod_type_abbr == "SLM":
-                    mod = PicoquantSepia2SLMModule(self, mod_type_name, slot_id)
-                else:
-                    # Add unknown module type as common module
-                    mod = PicoquantSepia2Module(self, mod_type_name, slot_id)
-
-                modules.append(mod)
-                # Add module as Qcodes-submodule
-                self.add_submodule(mod_type_abbr, mod)
-        finally:
-            self._lib.fwr_free_module_map(self._device_id)
+            modules.append(mod)
+            # Add module as Qcodes-submodule
+            self.add_submodule(mod_type_abbr, mod)
 
         # Add channel list
-        ch_tuple = qc.instrument.ChannelTuple(self, "modules", PicoquantSepia2Module, modules)
+        ch_tuple = qc.instrument.ChannelList(self, "modules", PicoquantSepia2Module, modules)
         self.add_submodule("modules", ch_tuple)
 
         return modules
