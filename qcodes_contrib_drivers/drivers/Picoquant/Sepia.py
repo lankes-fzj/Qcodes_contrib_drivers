@@ -1,6 +1,7 @@
 import functools as ft
 import typing as tp
 import math
+import warnings
 
 import qcodes as qc
 
@@ -77,6 +78,11 @@ class PicoquantSepia2SCMModule(PicoquantSepia2Module):
         if disable_soft_lock and self.soft_lock():
             # Disable soft lock
             self.soft_lock(False)
+
+        if self.lock():
+            # Instrument is locked
+            warnings.warn(f"Instrument '{parent.name}' is locked. It must be unlocked in order to" +
+                          "use it")
 
 
 class PicoquantSepia2SLMModule(PicoquantSepia2Module):
