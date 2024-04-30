@@ -285,7 +285,7 @@ class PicoquantSepia2(qc.Instrument):
             self._lib.fwr_free_module_map(self._device_id)
 
         # Add channel list
-        ch_tuple = qc.instrument.ChannelTuple(self, "modules", PicoquantSepia2Module, self._modules)
+        ch_tuple = qc.instrument.ChannelTuple(self, "modules", PicoquantSepia2Module, modules)
         self.add_submodule("modules", ch_tuple)
 
         return modules
