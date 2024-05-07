@@ -10,14 +10,14 @@ from .Sepia_Library import PicoquantSepia2Lib, PicoquantSepia2LibError
 
 class PicoquantSepia2Module(qc.instrument.InstrumentChannel):
     """Picoquant Sepia II common module.
-    
+
     The functions of the common module are strictly generic and will work on any module you might
     find plugged to a Picoquant laser device. Except for the functions on presets and updates, they
     are mainly informative.
-    
+
     This class serves as base class for all other modules and is also used for not yet implemented
     modules.
-    
+
     Args:
         parent (qc.Instrument): Parent instrument
         name (str): Instrument module name
@@ -41,7 +41,7 @@ class PicoquantSepia2Module(qc.instrument.InstrumentChannel):
 
 class PicoquantSepia2SCMModule(PicoquantSepia2Module):
     """Picoqunt Sepia II SCM module
-    
+
     This module implements the safety features of the PQ Laser Device, as there are the thermal and
     voltage monitoring, the interlock (hard locking) and soft locking capabilities.
 
@@ -87,7 +87,7 @@ class PicoquantSepia2SCMModule(PicoquantSepia2Module):
 
 class PicoquantSepia2SLMModule(PicoquantSepia2Module):
     """Picoqunt Sepia II SLM 828 module
-    
+
     SLM 828 modules can interface the huge families of pulsed laser diode heads (LDH series) and
     pulsed LED heads (PLS series) from Picoquant. These functions let the application control their
     working modes and intensity.
@@ -291,7 +291,7 @@ class PicoquantSepia2(qc.Instrument):
     def list_usb_devices(dll_path: str = None, str_encoding: str = None) \
             -> tp.List[tp.Tuple[int, str, str]]:
         """List connected Picoquant Sepia instruments.
-        
+
         Also busy or blocked instruments are listed. Note that you cannot establish a connection to
         those devices. When trying to create an instance it will fail with code -9004 or -9005.
 
