@@ -153,10 +153,6 @@ class Andor_iDus(Instrument):
                                "open for fvb": Atmcd64dShutterModes.OPEN_FOR_FVB,
                                "open for any": Atmcd64dShutterModes.OPEN_FOR_ANY})
 
-        self.add_parameter("single_track",
-                           set_cmd=self._set_single_track,
-                           label="single track definition")
-
         self.add_parameter("spectrum",
                            parameter_class=Spectrum,
                            shape=qc_vals.Arrays(self.x_pixels),
@@ -227,8 +223,14 @@ class Andor_iDus(Instrument):
     def _set_shutter_mode(self, shutter_mode: int) -> None:
         self.atmcd64d.set_shutter(1, shutter_mode, 30, 30)
 
-    def _set_single_track(self, height: int) -> None:
-        self.atmcd64d.set_single_track(129, height)
+    def set_single_track(self, center_row: int, height: int) -> None:
+        """This function will set the single track parameters.
+
+        Args:
+            center_row (int): center row of track
+            height (int): height of track
+        """
+        self.atmcd64d.set_single_track(center_row, height)
 
     # further methods
     def close(self) -> None:
