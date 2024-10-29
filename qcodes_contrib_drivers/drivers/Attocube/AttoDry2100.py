@@ -8,6 +8,7 @@ Authors:
 import warnings
 import qcodes as qc
 from .AttoDryLib import AttoDryLib, AttoDryDevice, AttoDryLibError
+import time
 
 __all__ = ["AttoDry2100"]
 
@@ -18,10 +19,12 @@ class AttoDry2100(qc.Instrument):
     Args:
         name: Name of the instrument
         com_port: COM-port the device is connected to
+        time_sleep (float, optional): Wait time in seconds after connecting
+        	before checking the connection (default: 5 seconds)
         path_to_dll (str, optional): Path to the library "attoDRYLib.dll"
     """
 
-    def __init__(self, name: str, com_port: str, path_to_dll: str = None):
+    def __init__(self, name: str, com_port: str, path_to_dll: str = None, time_sleep: float = 5.0):
         super().__init__(name)
 
         # Create library wrapper
@@ -30,6 +33,7 @@ class AttoDry2100(qc.Instrument):
         try:
             self._library.connect(com_port)
 
+            time.sleep(time_sleep)
             # Validate if device is initialized
             if not self._library.is_initialized():
                 raise AttoDryLibError("AttoDRY device is not initialized!")
