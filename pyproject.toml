@@ -49,9 +49,9 @@ test = [
     "coverage[toml]>=6.2",
     "pyvisa-sim",
     "types-tqdm>=4.64.6",
-    "pandas-stubs",
+    "pandas-stubs"
 ]
-docs = [ "sphinx", "furo", "nbsphinx", ]
+docs = [ "sphinx", "furo", "nbsphinx", "qcodes_loop" ]
 
 [tool.mypy]
 strict_optional = true
